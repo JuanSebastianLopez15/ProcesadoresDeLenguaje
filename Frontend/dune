@@ -1,1 +1,5 @@
-//CrisEsGay
+(library
+ (name frontend)
+ (libraries lib)
+ (ocamllex lexer)
+ (menhir (modules parser)))
