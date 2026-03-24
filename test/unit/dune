@@ -1,0 +1,5 @@
+(test
+ (name test_lexer)
+ (libraries ounit2 frontend lib))
+ 
+;usar la librería OUnit2
