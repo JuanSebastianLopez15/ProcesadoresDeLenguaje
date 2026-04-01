@@ -6,6 +6,13 @@ module Lexer = Frontend.Lexer
 module Typecheck = Go_to_ocaml_middle.Typecheck
 module Report = E2e_report
 
+(* NOTA: Este módulo implementa un smoke test de lexer + typecheck con AST
+   manual, NO un pipeline end-to-end completo (fuente→lexer→parser→AST→typecheck).
+   El lexer valida que el archivo fuente sea tokenizable, pero el typecheck opera
+   sobre un AST construido a mano que representa la semántica esperada del programa.
+   TODO: cuando el parser esté implementado, reemplazar `fixture.ast` por el AST
+   derivado de parsear los tokens del archivo para lograr integración real E2E. *)
+
 (* Expectativa de resultado semantico por fixture. *)
 type expected_typecheck =
   | Should_pass
@@ -13,7 +20,7 @@ type expected_typecheck =
 
 type fixture = {
   file_name : string;
-  ast : program;
+  ast : program;  (* AST manual; ver nota arriba sobre limitación E2E *)
   expected : expected_typecheck;
 }
 
@@ -61,7 +68,12 @@ let tokenize source =
   in
   loop []
 
-(* Ejecuta pipeline por fixture: lectura -> lexer -> typecheck -> asserts. *)
+(* Ejecuta smoke test por fixture: lectura del archivo fuente -> verificación
+   del lexer -> typecheck del AST manual -> asserts.
+   El lexer y el typecheck se ejercitan de forma independiente: los tokens se
+   extraen del archivo, pero el AST que se tipea es el definido en la fixture.
+   Cuando el parser esté disponible, esta función deberá construir el AST a
+   partir de los tokens del archivo en lugar de usar fx.ast directamente. *)
 let run_fixture base_dir fx _ =
   let path = Filename.concat base_dir fx.file_name in
   let source = read_file path in
@@ -295,6 +307,6 @@ let fixtures =
 
 let suite =
   let base_dir = resolve_source_dir () in
-  "e2e_go_txt" >::: List.map (fun fx -> fx.file_name >:: run_fixture base_dir fx) fixtures
+  "smoke_lexer_typecheck" >::: List.map (fun fx -> fx.file_name >:: run_fixture base_dir fx) fixtures
 
 let () = run_test_tt_main suite
