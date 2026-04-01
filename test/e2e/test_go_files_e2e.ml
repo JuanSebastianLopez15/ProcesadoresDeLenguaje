@@ -3,15 +3,11 @@ open Lib.Token
 open Lib.Ast
 
 module Lexer = Frontend.Lexer
+module Parser = Frontend.Parser
 module Typecheck = Go_to_ocaml_middle.Typecheck
 module Report = E2e_report
 
-(* NOTA: Este módulo implementa un smoke test de lexer + typecheck con AST
-   manual, NO un pipeline end-to-end completo (fuente→lexer→parser→AST→typecheck).
-   El lexer valida que el archivo fuente sea tokenizable, pero el typecheck opera
-   sobre un AST construido a mano que representa la semántica esperada del programa.
-   TODO: cuando el parser esté implementado, reemplazar `fixture.ast` por el AST
-   derivado de parsear los tokens del archivo para lograr integración real E2E. *)
+(* E2E real por fixture: fuente -> lexer -> parser -> AST -> typecheck. *)
 
 (* Expectativa de resultado semantico por fixture. *)
 type expected_typecheck =
@@ -20,8 +16,8 @@ type expected_typecheck =
 
 type fixture = {
   file_name : string;
-  ast : program;  (* AST manual; ver nota arriba sobre limitación E2E *)
   expected : expected_typecheck;
+  ast : program;
 }
 
 (* Se prueban varias rutas porque Dune ejecuta tests desde _build. *)
@@ -68,12 +64,18 @@ let tokenize source =
   in
   loop []
 
-(* Ejecuta smoke test por fixture: lectura del archivo fuente -> verificación
-   del lexer -> typecheck del AST manual -> asserts.
-   El lexer y el typecheck se ejercitan de forma independiente: los tokens se
-   extraen del archivo, pero el AST que se tipea es el definido en la fixture.
-   Cuando el parser esté disponible, esta función deberá construir el AST a
-   partir de los tokens del archivo en lugar de usar fx.ast directamente. *)
+let parse_program source =
+  let lexbuf = Lexing.from_string source in
+  try Ok (Parser.program Lexer.read lexbuf)
+  with
+  | Parser.Error ->
+      let pos = lexbuf.lex_curr_p in
+      let col = pos.pos_cnum - pos.pos_bol + 1 in
+      Error
+        (Printf.sprintf "error sintactico en linea %d, columna %d" pos.pos_lnum col)
+  | Failure msg -> Error msg
+
+(* Ejecuta pipeline completo por fixture: lectura -> lexer -> parser -> typecheck. *)
 let run_fixture base_dir fx _ =
   let path = Filename.concat base_dir fx.file_name in
   let source = read_file path in
@@ -83,13 +85,24 @@ let run_fixture base_dir fx _ =
     | Ok tokens -> Report.Lexer_ok tokens
     | Error msg -> Report.Lexer_error msg
   in
+  let parser_outcome = parse_program source in
+  let parser_report_outcome =
+    match parser_outcome with
+    | Ok _ -> Report.Parser_ok
+    | Error msg -> Report.Parser_error msg
+  in
   let typecheck_outcome =
-    match Typecheck.check_program fx.ast with
-    | Ok _ -> Report.Typecheck_ok
-    | Error msg -> Report.Typecheck_error msg
+    match parser_outcome with
+    | Ok ast ->
+        assert_equal ~msg:(Printf.sprintf "AST inesperado en %s" fx.file_name) fx.ast ast;
+        (match Typecheck.check_program ast with
+        | Ok _ -> Report.Typecheck_ok
+        | Error msg -> Report.Typecheck_error msg)
+    | Error msg -> Report.Typecheck_error ("parser: " ^ msg)
   in
 
-  Report.print_summary ~file_name:fx.file_name ~lexer_outcome ~typecheck_outcome;
+  Report.print_summary ~file_name:fx.file_name ~lexer_outcome
+    ~parser_outcome:parser_report_outcome ~typecheck_outcome;
 
   let tokens =
     match lexer_outcome with
@@ -101,6 +114,12 @@ let run_fixture base_dir fx _ =
   assert_bool
     (Printf.sprintf "No se encontro EOF en %s" fx.file_name)
     (List.exists (function EOF -> true | _ -> false) tokens);
+
+  (match parser_outcome with
+  | Ok _ -> ()
+  | Error msg ->
+      assert_failure
+        (Printf.sprintf "Parser fallo en %s: %s" fx.file_name msg));
 
   match (fx.expected, typecheck_outcome) with
   | Should_pass, Report.Typecheck_ok -> ()
@@ -129,30 +148,33 @@ let fixtures =
         {
           package = "main";
           imports = [ "fmt" ];
-          decls = [
-            FuncDecl {
-              name = "sumarUno";
-              params = [ ("x", TInt) ];
-              ret = [ TInt ];
-              body = [ Return [ BinOp (Add, Var "x", Lit (IntLit 1)) ] ];
-            };
-            FuncDecl {
-              name = "main";
-              params = [];
-              ret = [];
-              body = [
-                ShortDecl ("contador", Lit (IntLit 1));
-                ForCond
-                  ( BinOp (Leq, Var "contador", Lit (IntLit 3)),
-                    [ ExprStmt
-                        (MethodCall (Var "fmt", "Println", [ Var "contador" ]));
-                      Assign
-                        ( [ Var "contador" ],
-                          [ Call ("sumarUno", [ Var "contador" ]) ] );
-                    ] );
-              ];
-            };
-          ];
+          decls =
+            [ FuncDecl
+                {
+                  name = "sumarUno";
+                  params = [ ("x", TInt) ];
+                  ret = [ TInt ];
+                  body = [ Return [ BinOp (Add, Var "x", Lit (IntLit 1)) ] ];
+                };
+              FuncDecl
+                {
+                  name = "main";
+                  params = [];
+                  ret = [];
+                  body =
+                    [ ShortDecl ("contador", Lit (IntLit 1));
+                      ForCond
+                        ( BinOp (Leq, Var "contador", Lit (IntLit 3)),
+                          [ ExprStmt
+                              (MethodCall
+                                 (Var "fmt", "Println", [ Var "contador" ]));
+                            Assign
+                              ( [ Var "contador" ],
+                                [ Call ("sumarUno", [ Var "contador" ]) ] );
+                          ] );
+                    ];
+                };
+            ];
         };
     };
     (* Caso invalido: condicion de if no booleana. *)
@@ -164,7 +186,14 @@ let fixtures =
           package = "main";
           imports = [];
           decls =
-            [ FuncDecl { name = "main"; params = []; ret = []; body = [ If (Lit (IntLit 1), [], None) ] } ];
+            [ FuncDecl
+                {
+                  name = "main";
+                  params = [];
+                  ret = [];
+                  body = [ If (Lit (IntLit 1), [], None) ];
+                };
+            ];
         };
     };
     (* Caso invalido: aridad incorrecta en llamada. *)
@@ -175,20 +204,22 @@ let fixtures =
         {
           package = "main";
           imports = [];
-          decls = [
-            FuncDecl {
-              name = "doble";
-              params = [ ("numero", TInt) ];
-              ret = [ TInt ];
-              body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2)) ] ];
-            };
-            FuncDecl {
-              name = "main";
-              params = [];
-              ret = [];
-              body = [ ShortDecl ("resultado", Call ("doble", [])) ];
-            };
-          ];
+          decls =
+            [ FuncDecl
+                {
+                  name = "doble";
+                  params = [ ("numero", TInt) ];
+                  ret = [ TInt ];
+                  body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2)) ] ];
+                };
+              FuncDecl
+                {
+                  name = "main";
+                  params = [];
+                  ret = [];
+                  body = [ ShortDecl ("resultado", Call ("doble", [])) ];
+                };
+            ];
         };
     };
     (* Caso valido: if/else con comparacion booleana. *)
@@ -200,8 +231,7 @@ let fixtures =
           package = "main";
           imports = [ "fmt" ];
           decls =
-            [
-              FuncDecl
+            [ FuncDecl
                 {
                   name = "main";
                   params = [];
@@ -211,10 +241,12 @@ let fixtures =
                       If
                         ( BinOp (Eq, Var "x", Lit (IntLit 0)),
                           [ ExprStmt
-                              (MethodCall (Var "fmt", "Println", [ Lit (StringLit "ok") ])) ],
+                              (MethodCall
+                                 (Var "fmt", "Println", [ Lit (StringLit "ok") ])) ],
                           Some
                             [ ExprStmt
-                                (MethodCall (Var "fmt", "Println", [ Lit (StringLit "no") ])) ] );
+                                (MethodCall
+                                   (Var "fmt", "Println", [ Lit (StringLit "no") ])) ] );
                     ];
                 };
             ];
@@ -307,6 +339,7 @@ let fixtures =
 
 let suite =
   let base_dir = resolve_source_dir () in
-  "smoke_lexer_typecheck" >::: List.map (fun fx -> fx.file_name >:: run_fixture base_dir fx) fixtures
+  "e2e_full_frontend_middleware"
+  >::: List.map (fun fx -> fx.file_name >:: run_fixture base_dir fx) fixtures
 
 let () = run_test_tt_main suite

@@ -2,6 +2,7 @@ open Lib.Token
 open Lib.Ast
 
 module Lexer = Frontend.Lexer
+module Parser = Frontend.Parser
 module Typecheck = Go_to_ocaml_middle.Typecheck
 
 (* Se prueban varias rutas para ejecutar desde raiz o desde test/e2e. *)
@@ -34,19 +35,36 @@ let token_to_string = function
   | IF -> "IF"
   | ELSE -> "ELSE"
   | RETURN -> "RETURN"
+  | VAR -> "VAR"
+  | RANGE -> "RANGE"
+  | TRUE -> "TRUE"
+  | FALSE -> "FALSE"
+  | NIL -> "NIL"
   | IDENT s -> Printf.sprintf "IDENT(%s)" s
   | INTLIT n -> Printf.sprintf "INTLIT(%d)" n
   | STRINGLIT s -> Printf.sprintf "STRINGLIT(%s)" s
   | ASSIGN -> "ASSIGN"
   | DECL_ASSIGN -> "DECL_ASSIGN"
   | PLUS -> "PLUS"
+  | MINUS -> "MINUS"
   | STAR -> "STAR"
+  | SLASH -> "SLASH"
   | MOD -> "MOD"
   | EQ_EQ -> "EQ_EQ"
+  | NOT_EQ -> "NOT_EQ"
+  | LT -> "LT"
+  | GT -> "GT"
   | LTE -> "LTE"
+  | GTE -> "GTE"
+  | AND_AND -> "AND_AND"
+  | OR_OR -> "OR_OR"
+  | BANG -> "BANG"
   | INC -> "INC"
+  | DEC -> "DEC"
   | LPAREN -> "LPAREN"
   | RPAREN -> "RPAREN"
+  | LBRACK -> "LBRACK"
+  | RBRACK -> "RBRACK"
   | LBRACE -> "LBRACE"
   | RBRACE -> "RBRACE"
   | COMMA -> "COMMA"
@@ -73,69 +91,16 @@ let print_tokens tokens =
     (fun i t -> Printf.printf "%03d  %s\n" (i + 1) (token_to_string t))
     tokens
 
-let build_sufrimiento_ast () =
-  (* Parser aun esta en modo dummy, por eso el AST se construye manualmente. *)
-  {
-    package = "main";
-    imports = [ "fmt" ];
-    decls = [
-      FuncDecl {
-        name = "calcularDoble";
-        params = [ ("numero", TInt) ];
-        ret = [ TInt ];
-        body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2)) ] ];
-      };
-      FuncDecl {
-        name = "mostrarMensaje";
-        params = [ ("texto", TString) ];
-        ret = [];
-        body = [
-          ExprStmt
-            (MethodCall
-               ( Var "fmt",
-                 "Println",
-                 [ Lit (StringLit "Mensaje:"); Var "texto" ] ));
-        ];
-      };
-      FuncDecl {
-        name = "main";
-        params = [];
-        ret = [];
-        body = [
-          ShortDecl ("contador", Lit (IntLit 1));
-          ForCond
-            ( BinOp (Leq, Var "contador", Lit (IntLit 5)),
-              [ ExprStmt
-                  (MethodCall
-                     ( Var "fmt",
-                       "Println",
-                       [ Lit (StringLit "Iteracion:"); Var "contador" ] ));
-                If
-                  ( BinOp
-                      ( Eq,
-                        BinOp (Mod, Var "contador", Lit (IntLit 2)),
-                        Lit (IntLit 0) ),
-                    [ ExprStmt
-                        (Call
-                           ( "mostrarMensaje",
-                             [ Lit (StringLit "El numero es par") ] )) ],
-                    Some
-                      [ ExprStmt
-                          (Call
-                             ( "mostrarMensaje",
-                               [ Lit (StringLit "El numero es impar") ] )) ] );
-                ShortDecl ("resultado", Call ("calcularDoble", [ Var "contador" ]));
-                ExprStmt
-                  (MethodCall
-                     ( Var "fmt",
-                       "Println",
-                       [ Lit (StringLit "El doble es:"); Var "resultado" ] ));
-                ExprStmt (UnOp (Inc, Var "contador"));
-              ] );
-        ];
-      };
-    ];
-  }
+let parse_program source =
+  let lexbuf = Lexing.from_string source in
+  try Ok (Parser.program Lexer.read lexbuf)
+  with
+  | Parser.Error ->
+      let pos = lexbuf.lex_curr_p in
+      let col = pos.pos_cnum - pos.pos_bol + 1 in
+      Error
+        (Printf.sprintf "error sintactico en linea %d, columna %d" pos.pos_lnum col)
+  | Failure msg -> Error msg
 
 let indent n = String.make (2 * n) ' '
 
@@ -278,11 +243,10 @@ let () =
       Printf.printf "Lexer ERROR: %s\n" msg;
       Printf.printf "(La prueba continua para mostrar la integracion con middleware.)\n");
 
-  Printf.printf
-    "\nNota: el parser actual esta en modo dummy; para esta prueba E2E se usa un AST\n";
-  Printf.printf
-    "canonico de sufrimiento_go para conectar frontend (lexer) con middleware (typecheck).\n";
-
-  let ast = build_sufrimiento_ast () in
-  Printf.printf "\n== AST (E2E) ==\n%s\n" (string_of_program ast);
-  run_typecheck ast
+  match parse_program source with
+  | Ok ast ->
+      Printf.printf "\n== AST (PARSER) ==\n%s\n" (string_of_program ast);
+      run_typecheck ast
+  | Error msg ->
+      Printf.printf "\n== FRONTEND / PARSER ==\n";
+      Printf.printf "Parser ERROR: %s\n" msg
