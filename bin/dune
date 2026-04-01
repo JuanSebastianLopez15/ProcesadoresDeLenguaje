@@ -1,0 +1,6 @@
+(executable
+ (name main)
+ (libraries
+  lib
+  frontend
+  go_to_ocaml_middle))

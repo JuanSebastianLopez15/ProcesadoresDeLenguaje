@@ -21,10 +21,18 @@ let test_simbolos _ =
   let esperado = [IDENT "contador"; DECL_ASSIGN; INTLIT 1; EOF] in
   assert_equal esperado (tokenize_string codigo)
 
+let test_selector_con_punto _ =
+  let codigo = "fmt.Println(\"ok\")" in
+  let esperado =
+    [IDENT "fmt"; DOT; IDENT "Println"; LPAREN; STRINGLIT "ok"; RPAREN; EOF]
+  in
+  assert_equal esperado (tokenize_string codigo)
+
 let suite =
   "Suite de pruebas del Lexer" >::: [
     "test_basico" >:: test_basico;
     "test_simbolos" >:: test_simbolos;
+    "test_selector_con_punto" >:: test_selector_con_punto;
   ]
 
 let () =

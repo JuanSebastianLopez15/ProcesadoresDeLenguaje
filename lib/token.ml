@@ -13,5 +13,6 @@ type token =
   | LPAREN | RPAREN (* ( ) *)
   | LBRACE | RBRACE (* { } *)
   | COMMA           (* , *)
+  | DOT             (* . *)
   | SEMICOLON       (* ; *)
   | EOF

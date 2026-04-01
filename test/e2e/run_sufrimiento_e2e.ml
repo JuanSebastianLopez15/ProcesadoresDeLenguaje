@@ -1,0 +1,288 @@
+open Lib.Token
+open Lib.Ast
+
+module Lexer = Frontend.Lexer
+module Typecheck = Go_to_ocaml_middle.Typecheck
+
+(* Se prueban varias rutas para ejecutar desde raiz o desde test/e2e. *)
+let source_candidates =
+  [
+    "Source Code/sufrimiento_go.txt";
+    "../Source Code/sufrimiento_go.txt";
+    "../../Source Code/sufrimiento_go.txt";
+  ]
+
+let resolve_source_path () =
+  match List.find_opt Sys.file_exists source_candidates with
+  | Some path -> path
+  | None ->
+      failwith
+        "No se encontro sufrimiento_go.txt. Revisar ruta en source_candidates."
+
+let read_file path =
+  let ch = open_in_bin path in
+  let len = in_channel_length ch in
+  let data = really_input_string ch len in
+  close_in ch;
+  data
+
+let token_to_string = function
+  | PACKAGE -> "PACKAGE"
+  | IMPORT -> "IMPORT"
+  | FUNC -> "FUNC"
+  | FOR -> "FOR"
+  | IF -> "IF"
+  | ELSE -> "ELSE"
+  | RETURN -> "RETURN"
+  | IDENT s -> Printf.sprintf "IDENT(%s)" s
+  | INTLIT n -> Printf.sprintf "INTLIT(%d)" n
+  | STRINGLIT s -> Printf.sprintf "STRINGLIT(%s)" s
+  | ASSIGN -> "ASSIGN"
+  | DECL_ASSIGN -> "DECL_ASSIGN"
+  | PLUS -> "PLUS"
+  | STAR -> "STAR"
+  | MOD -> "MOD"
+  | EQ_EQ -> "EQ_EQ"
+  | LTE -> "LTE"
+  | INC -> "INC"
+  | LPAREN -> "LPAREN"
+  | RPAREN -> "RPAREN"
+  | LBRACE -> "LBRACE"
+  | RBRACE -> "RBRACE"
+  | COMMA -> "COMMA"
+  | DOT -> "DOT"
+  | SEMICOLON -> "SEMICOLON"
+  | EOF -> "EOF"
+
+(* Lexer frontal: convierte fuente en una secuencia de tokens. *)
+let tokenize source =
+  let lexbuf = Lexing.from_string source in
+  let rec loop acc =
+    try
+      match Lexer.read lexbuf with
+      | EOF -> Ok (List.rev (EOF :: acc))
+      | t -> loop (t :: acc)
+    with
+    | Lexer.SyntaxError msg -> Error msg
+  in
+  loop []
+
+let print_tokens tokens =
+  Printf.printf "\n== FRONTEND / LEXER TOKENS ==\n";
+  List.iteri
+    (fun i t -> Printf.printf "%03d  %s\n" (i + 1) (token_to_string t))
+    tokens
+
+let build_sufrimiento_ast () =
+  (* Parser aun esta en modo dummy, por eso el AST se construye manualmente. *)
+  {
+    package = "main";
+    imports = [ "fmt" ];
+    decls = [
+      FuncDecl {
+        name = "calcularDoble";
+        params = [ ("numero", TInt) ];
+        ret = [ TInt ];
+        body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2)) ] ];
+      };
+      FuncDecl {
+        name = "mostrarMensaje";
+        params = [ ("texto", TString) ];
+        ret = [];
+        body = [
+          ExprStmt
+            (MethodCall
+               ( Var "fmt",
+                 "Println",
+                 [ Lit (StringLit "Mensaje:"); Var "texto" ] ));
+        ];
+      };
+      FuncDecl {
+        name = "main";
+        params = [];
+        ret = [];
+        body = [
+          ShortDecl ("contador", Lit (IntLit 1));
+          ForCond
+            ( BinOp (Leq, Var "contador", Lit (IntLit 5)),
+              [ ExprStmt
+                  (MethodCall
+                     ( Var "fmt",
+                       "Println",
+                       [ Lit (StringLit "Iteracion:"); Var "contador" ] ));
+                If
+                  ( BinOp
+                      ( Eq,
+                        BinOp (Mod, Var "contador", Lit (IntLit 2)),
+                        Lit (IntLit 0) ),
+                    [ ExprStmt
+                        (Call
+                           ( "mostrarMensaje",
+                             [ Lit (StringLit "El numero es par") ] )) ],
+                    Some
+                      [ ExprStmt
+                          (Call
+                             ( "mostrarMensaje",
+                               [ Lit (StringLit "El numero es impar") ] )) ] );
+                ShortDecl ("resultado", Call ("calcularDoble", [ Var "contador" ]));
+                ExprStmt
+                  (MethodCall
+                     ( Var "fmt",
+                       "Println",
+                       [ Lit (StringLit "El doble es:"); Var "resultado" ] ));
+                ExprStmt (UnOp (Inc, Var "contador"));
+              ] );
+        ];
+      };
+    ];
+  }
+
+let indent n = String.make (2 * n) ' '
+
+let string_of_typ = function
+  | TInt -> "TInt"
+  | TFloat64 -> "TFloat64"
+  | TString -> "TString"
+  | TBool -> "TBool"
+  | TNil -> "TNil"
+  | TVoid -> "TVoid"
+  | TAny -> "TAny"
+  | TSlice _ -> "TSlice(...)"
+  | TMap _ -> "TMap(...)"
+  | TFunc _ -> "TFunc(...)"
+
+let string_of_literal = function
+  | IntLit n -> Printf.sprintf "IntLit(%d)" n
+  | FloatLit f -> Printf.sprintf "FloatLit(%f)" f
+  | StringLit s -> Printf.sprintf "StringLit(%S)" s
+  | BoolLit b -> Printf.sprintf "BoolLit(%b)" b
+  | NilLit -> "NilLit"
+
+let string_of_binop = function
+  | Add -> "Add"
+  | Sub -> "Sub"
+  | Mul -> "Mul"
+  | Div -> "Div"
+  | Mod -> "Mod"
+  | Eq -> "Eq"
+  | Neq -> "Neq"
+  | Lt -> "Lt"
+  | Gt -> "Gt"
+  | Leq -> "Leq"
+  | Geq -> "Geq"
+  | And -> "And"
+  | Or -> "Or"
+
+let string_of_unop = function
+  | Not -> "Not"
+  | Neg -> "Neg"
+  | Inc -> "Inc"
+  | Dec -> "Dec"
+
+let rec string_of_expr = function
+  | Lit lit -> Printf.sprintf "Lit(%s)" (string_of_literal lit)
+  | Var v -> Printf.sprintf "Var(%s)" v
+  | BinOp (op, l, r) ->
+      Printf.sprintf "BinOp(%s, %s, %s)" (string_of_binop op) (string_of_expr l)
+        (string_of_expr r)
+  | UnOp (op, e) ->
+      Printf.sprintf "UnOp(%s, %s)" (string_of_unop op) (string_of_expr e)
+  | Call (name, args) ->
+      Printf.sprintf "Call(%s, [%s])" name
+        (String.concat "; " (List.map string_of_expr args))
+  | MethodCall (obj, name, args) ->
+      Printf.sprintf "MethodCall(%s, %s, [%s])" (string_of_expr obj) name
+        (String.concat "; " (List.map string_of_expr args))
+  | Index (arr, idx) ->
+      Printf.sprintf "Index(%s, %s)" (string_of_expr arr) (string_of_expr idx)
+  | Selector (e, field) ->
+      Printf.sprintf "Selector(%s, %s)" (string_of_expr e) field
+
+let rec string_of_stmt level = function
+  | Assign (lhs, rhs) ->
+      Printf.sprintf "%sAssign([%s], [%s])" (indent level)
+        (String.concat "; " (List.map string_of_expr lhs))
+        (String.concat "; " (List.map string_of_expr rhs))
+  | ShortDecl (name, e) ->
+      Printf.sprintf "%sShortDecl(%s, %s)" (indent level) name (string_of_expr e)
+  | If (cond, then_block, else_opt) ->
+      let then_s = String.concat "\n" (List.map (string_of_stmt (level + 1)) then_block) in
+      let else_s =
+        match else_opt with
+        | None -> ""
+        | Some b ->
+            Printf.sprintf "\n%selse:\n%s" (indent level)
+              (String.concat "\n" (List.map (string_of_stmt (level + 1)) b))
+      in
+      Printf.sprintf "%sIf(%s)\n%s%s" (indent level) (string_of_expr cond) then_s else_s
+  | ForCond (cond, body) ->
+      Printf.sprintf "%sForCond(%s)\n%s" (indent level) (string_of_expr cond)
+        (String.concat "\n" (List.map (string_of_stmt (level + 1)) body))
+  | ForRange (k, v, coll, body) ->
+      Printf.sprintf "%sForRange(%s, %s, %s)\n%s" (indent level) k v
+        (string_of_expr coll)
+        (String.concat "\n" (List.map (string_of_stmt (level + 1)) body))
+  | Return exprs ->
+      Printf.sprintf "%sReturn([%s])" (indent level)
+        (String.concat "; " (List.map string_of_expr exprs))
+  | ExprStmt e -> Printf.sprintf "%sExprStmt(%s)" (indent level) (string_of_expr e)
+  | Defer e -> Printf.sprintf "%sDefer(%s)" (indent level) (string_of_expr e)
+  | Go e -> Printf.sprintf "%sGo(%s)" (indent level) (string_of_expr e)
+
+let string_of_decl = function
+  | FuncDecl f ->
+      let params_s =
+        f.params
+        |> List.map (fun (name, t) -> Printf.sprintf "%s:%s" name (string_of_typ t))
+        |> String.concat ", "
+      in
+      let ret_s = String.concat ", " (List.map string_of_typ f.ret) in
+      let body_s = String.concat "\n" (List.map (string_of_stmt 2) f.body) in
+      Printf.sprintf "  FuncDecl %s(%s) -> [%s]\n%s" f.name params_s ret_s body_s
+  | VarDecl (name, typ_opt, expr_opt) ->
+      let typ_s =
+        match typ_opt with
+        | None -> "_"
+        | Some t -> string_of_typ t
+      in
+      let expr_s =
+        match expr_opt with
+        | None -> "_"
+        | Some e -> string_of_expr e
+      in
+      Printf.sprintf "  VarDecl %s : %s = %s" name typ_s expr_s
+
+let string_of_program p =
+  let imports_s = String.concat ", " p.imports in
+  let decls_s = String.concat "\n" (List.map string_of_decl p.decls) in
+  Printf.sprintf "Program(package=%s, imports=[%s])\n%s" p.package imports_s decls_s
+
+let run_typecheck ast =
+  (* Middleware: valida semanticamente el AST construido. *)
+  Printf.printf "\n== MIDDLEWARE / TYPECHECK ==\n";
+  match Typecheck.check_program ast with
+  | Ok _ -> Printf.printf "Typecheck OK: el programa es valido.\n"
+  | Error msg -> Printf.printf "Typecheck ERROR: %s\n" msg
+
+let () =
+  let source_path = resolve_source_path () in
+  Printf.printf "E2E: procesamiento de archivo Go -> frontend -> middleware\n";
+  Printf.printf "Archivo fuente: %s\n" source_path;
+  let source = read_file source_path in
+  Printf.printf "\n== FUENTE GO ==\n%s\n" source;
+
+  (match tokenize source with
+  | Ok tokens -> print_tokens tokens
+  | Error msg ->
+      Printf.printf "\n== FRONTEND / LEXER ==\n";
+      Printf.printf "Lexer ERROR: %s\n" msg;
+      Printf.printf "(La prueba continua para mostrar la integracion con middleware.)\n");
+
+  Printf.printf
+    "\nNota: el parser actual esta en modo dummy; para esta prueba E2E se usa un AST\n";
+  Printf.printf
+    "canonico de sufrimiento_go para conectar frontend (lexer) con middleware (typecheck).\n";
+
+  let ast = build_sufrimiento_ast () in
+  Printf.printf "\n== AST (E2E) ==\n%s\n" (string_of_program ast);
+  run_typecheck ast

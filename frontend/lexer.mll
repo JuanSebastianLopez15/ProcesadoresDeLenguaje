@@ -37,6 +37,7 @@ rule read = parse
   | "{"        { LBRACE }
   | "}"        { RBRACE }
   | ","        { COMMA }
+  | "."        { DOT }
   | ";"        { SEMICOLON }
   
   | digit+ as n { INTLIT (int_of_string n) }

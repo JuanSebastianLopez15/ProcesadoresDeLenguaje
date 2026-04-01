@@ -1,0 +1,13 @@
+package main
+
+func doble(numero int) int {
+    return numero * 2
+}
+
+func triple(numero int) int {
+    return doble(numero) + numero
+}
+
+func main() {
+    resultado := triple(3)
+}

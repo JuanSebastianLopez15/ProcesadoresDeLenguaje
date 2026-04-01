@@ -1,0 +1,15 @@
+package main
+
+import "fmt"
+
+func sumarUno(x int) int {
+    return x + 1
+}
+
+func main() {
+    contador := 1
+    for contador <= 3 {
+        fmt.Println(contador)
+        contador = sumarUno(contador)
+    }
+}
