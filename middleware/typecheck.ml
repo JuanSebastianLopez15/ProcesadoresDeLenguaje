@@ -7,6 +7,7 @@ type error =
     | UndeclaredFunc of string
     | ReturnTypeMismatch of {expected: typ list; got: typ list}
     | NotCallable of string
+    | VoidUsedAsValue of string
 exception TypeError of error
 let rec pp_typ = function
   | TInt     -> "int"
@@ -14,8 +15,17 @@ let rec pp_typ = function
   | TString  -> "string"
   | TBool    -> "bool"
   | TNil     -> "nil"
-  | TSlice t -> "[]" ^ pp_typ t    (* recursivo simplificado *)
-  | _        -> "?"
+  | TVoid    -> "void"
+  | TAny     -> "any"
+  | TSlice t -> "[]" ^ pp_typ t
+  | TMap (k, v) -> "map[" ^ pp_typ k ^ "]" ^ pp_typ v
+  | TFunc (params, []) ->
+      let ps = String.concat ", " (List.map pp_typ params) in
+      Printf.sprintf "func(%s)" ps
+  | TFunc (params, rets) ->
+      let ps = String.concat ", " (List.map pp_typ params) in
+      let rs = String.concat ", " (List.map pp_typ rets) in
+      Printf.sprintf "func(%s) (%s)" ps rs
 
 let pp_error = function
   | UndeclaredVar x ->
@@ -32,6 +42,8 @@ let pp_error = function
       "tipo de retorno no coincide con la firma de la función"
   | NotCallable x ->
       Printf.sprintf "'%s' no es una función" x
+  | VoidUsedAsValue context ->
+      Printf.sprintf "expresión de tipo void usada como valor en '%s'" context
 
 
 (* ── Helpers ─────────────────────────────────────────── *)
@@ -44,6 +56,12 @@ let lookup_or_fail env name =
   match Env.lookup name env with
   | Some t -> t
   | None   -> raise (TypeError (UndeclaredVar name))
+
+(* Rechaza TVoid donde se requiere un valor concreto *)
+let reject_void ~context t =
+  match t with
+  | TVoid -> raise (TypeError (VoidUsedAsValue context))
+  | _ -> ()
 
 
 (* ── Inferencia de expresiones ───────────────────────── *)
@@ -112,20 +130,21 @@ let rec check_expr env = function
            (* Verificar tipo de cada argumento *)
            List.iter2 (fun expected_t arg ->
              let got_t = check_expr env arg in
+             reject_void ~context:("argumento de " ^ name) got_t;
              expect_type ~context:("argumento de " ^ name) expected_t got_t
            ) param_types args;
            (* Retornar primer tipo (múltiples retornos → tupla, simplificado) *)
            (match ret_types with
-            | []  -> TNil
+            | []  -> TVoid
             | [t] -> t
             | ts  -> TFunc ([], ts))   (* múltiples retornos *)
       | Some _ -> raise (TypeError (NotCallable name)))
 
   (* fmt.Println y similares — aceptan cualquier tipo *)
-  | MethodCall (Var "fmt", ("Println"|"Printf"|"Print"), _) -> TNil
+  | MethodCall (Var "fmt", ("Println"|"Printf"|"Print"), _) -> TVoid
 
   | MethodCall (obj, _, _) ->
-      let _ = check_expr env obj in TNil  (* simplificado *)
+      let _ = check_expr env obj in TVoid  (* simplificado *)
 
   | Index (arr, idx) ->
       expect_type ~context:"índice" TInt (check_expr env idx);
@@ -147,12 +166,14 @@ and check_stmt env expected_ret = function
   (* contador := 1  →  extiende el env con contador:int *)
   | ShortDecl (name, expr) ->
       let t = check_expr env expr in
+      reject_void ~context:("declaración ':=' de " ^ name) t;
       Env.extend name t env
 
   (* a = b  →  verifica que los tipos coincidan *)
   | Assign ([lhs], [rhs]) ->
       let tl = check_expr env lhs in
       let tr = check_expr env rhs in
+      reject_void ~context:"lado derecho de asignación" tr;
       expect_type ~context:"asignación" tl tr;
       env   (* asignación no extiende el entorno *)
 
