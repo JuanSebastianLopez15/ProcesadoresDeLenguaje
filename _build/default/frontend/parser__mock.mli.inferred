@@ -1,4 +1,0 @@
-type token = IDENT of string | EOF
-val menhir_begin_marker : int
-val xv_dummy : unit
-val menhir_end_marker : int

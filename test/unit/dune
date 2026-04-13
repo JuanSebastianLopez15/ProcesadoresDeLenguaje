@@ -1,5 +1,11 @@
 (test
  (name test_lexer)
  (libraries ounit2 frontend lib))
- 
-;usar la librería OUnit2
+
+(test
+ (name test_typecheck)
+ (libraries ounit2 lib go_to_ocaml_middle))
+
+(test
+ (name test_parser)
+ (libraries ounit2 frontend))

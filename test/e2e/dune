@@ -1,0 +1,9 @@
+(executable
+ (name run_sufrimiento_e2e)
+ (modules run_sufrimiento_e2e)
+ (libraries lib frontend go_to_ocaml_middle))
+
+(test
+ (name test_go_files_e2e)
+ (modules test_go_files_e2e e2e_report)
+ (libraries ounit2 lib frontend go_to_ocaml_middle))
