@@ -37,10 +37,13 @@ let token_to_string = function
   | RETURN -> "RETURN"
   | VAR -> "VAR"
   | RANGE -> "RANGE"
+  | TYPE -> "TYPE"        (* NUEVO *)
+  | STRUCT -> "STRUCT"    (* NUEVO *)
   | TRUE -> "TRUE"
   | FALSE -> "FALSE"
   | NIL -> "NIL"
   | IDENT s -> Printf.sprintf "IDENT(%s)" s
+  | STRUCT_ID s -> Printf.sprintf "STRUCT_ID(%s)" s
   | INTLIT n -> Printf.sprintf "INTLIT(%d)" n
   | STRINGLIT s -> Printf.sprintf "STRINGLIT(%s)" s
   | ASSIGN -> "ASSIGN"
@@ -115,6 +118,8 @@ let string_of_typ = function
   | TSlice _ -> "TSlice(...)"
   | TMap _ -> "TMap(...)"
   | TFunc _ -> "TFunc(...)"
+  | TName n -> Printf.sprintf "TName(%s)" n      (* NUEVO *)
+  | TStruct _ -> "TStruct(...)"                  (* NUEVO *)
 
 let string_of_literal = function
   | IntLit n -> Printf.sprintf "IntLit(%d)" n
@@ -162,6 +167,14 @@ let rec string_of_expr = function
       Printf.sprintf "Index(%s, %s)" (string_of_expr arr) (string_of_expr idx)
   | Selector (e, field) ->
       Printf.sprintf "Selector(%s, %s)" (string_of_expr e) field
+  | StructLit (name, args) ->                                   (* NUEVO *)
+      Printf.sprintf "StructLit(%s, [%s])" name
+        (String.concat "; " (List.map string_of_expr args))
+  | SliceLit (t, args) ->                                       (* NUEVO *)
+      Printf.sprintf "SliceLit(%s, [%s])" (string_of_typ t)
+        (String.concat "; " (List.map string_of_expr args))
+  | Cast (t, e) ->                                              (* NUEVO *)
+      Printf.sprintf "Cast(%s, %s)" (string_of_typ t) (string_of_expr e)
 
 let rec string_of_stmt level = function
   | Assign (lhs, rhs) ->
@@ -216,6 +229,8 @@ let string_of_decl = function
         | Some e -> string_of_expr e
       in
       Printf.sprintf "  VarDecl %s : %s = %s" name typ_s expr_s
+  | TypeDecl (name, t) ->                                    (* NUEVO *)
+      Printf.sprintf "  TypeDecl %s = %s" name (string_of_typ t)
 
 let string_of_program p =
   let imports_s = String.concat ", " p.imports in

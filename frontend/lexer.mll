@@ -1,5 +1,3 @@
-(*Es como un escaner que toma el codigo de go, lo agrupa y lo pone en tokens*)
-(*Segun investigue y chat me dijo jajaj, OCaml usa ocamllex, este traduce el archivo .mll a codigo OCaml original o puro como diria el simon de los simones *)
 {
   open Lib.Token
   exception SyntaxError of string
@@ -8,6 +6,7 @@
 
   let token_ends_stmt = function
     | IDENT _
+    | STRUCT_ID _
     | INTLIT _
     | STRINGLIT _
     | TRUE
@@ -18,7 +17,8 @@
     | DEC
     | RPAREN
     | RBRACK
-    | RBRACE -> true
+    | RBRACE
+    | STRUCT -> true
     | _ -> false
 
   let emit tok =
@@ -26,16 +26,14 @@
     tok
 }
 
-(*Etiquetas para no repetir codigo*)
 let digit = ['0'-'9']
-let alpha = ['a'-'z' 'A'-'Z' '_']
-let ident = alpha (alpha | digit)*
 let whitespace = [' ' '\t']+
 let newline = '\r' | '\n' | "\r\n"
 
 rule read = parse
-  | whitespace { read lexbuf } (*Se llama a el mismo para leer mas caracteres*)
+  | whitespace { read lexbuf }
   | newline    {
+      Lexing.new_line lexbuf;  (* NUEVO: ¡Ahora sí contará las líneas para los errores! *)
       if !last_token_can_end_stmt then emit SEMICOLON
       else read lexbuf
     }
@@ -49,6 +47,8 @@ rule read = parse
   | "return"   { emit RETURN }
   | "var"      { emit VAR }
   | "range"    { emit RANGE }
+  | "type"     { emit TYPE }
+  | "struct"   { emit STRUCT }
   | "true"     { emit TRUE }
   | "false"    { emit FALSE }
   | "nil"      { emit NIL }
@@ -83,7 +83,9 @@ rule read = parse
   
   | digit+ as n { emit (INTLIT (int_of_string n)) }
   | '"' ([^ '"']* as s) '"' { emit (STRINGLIT s) }
-  | ident as id { emit (IDENT id) }
+  
+  | ['A'-'Z'] ['a'-'z' 'A'-'Z' '0'-'9' '_']* as id { emit (STRUCT_ID id) }
+  | ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']* as id { emit (IDENT id) }
   
   | eof {
       last_token_can_end_stmt := false;

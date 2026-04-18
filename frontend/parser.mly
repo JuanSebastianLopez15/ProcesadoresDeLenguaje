@@ -2,17 +2,20 @@
 open Lib.Ast
 
 let parse_type = function
-	| "int" -> TInt
+	| "int" | "int64" | "rune" | "byte" -> TInt
 	| "string" -> TString
 	| "bool" -> TBool
-	| "float64" -> TFloat64
+	| "float64" | "float32" -> TFloat64
 	| "any" -> TAny
-	| name -> failwith ("Tipo no soportado en parser: " ^ name)
+	| name -> TName name
 %}
 
+/* DEFINICIÓN DE TOKENS (El diccionario que faltaba) */
 %token PACKAGE IMPORT FUNC FOR IF ELSE RETURN VAR RANGE
+%token TYPE STRUCT
 %token TRUE FALSE NIL
 %token <string> IDENT
+%token <string> STRUCT_ID
 %token <int> INTLIT
 %token <string> STRINGLIT
 %token ASSIGN DECL_ASSIGN
@@ -29,12 +32,25 @@ let parse_type = function
 %token SEMICOLON
 %token EOF
 
+/* PRIORIDADES: De menor a mayor precedencia */
+%left OR_OR
+%left AND_AND
+%left EQ_EQ NOT_EQ LT GT LTE GTE
+%left PLUS MINUS
+%left STAR SLASH MOD
+%nonassoc BANG
+%left DOT LBRACK LPAREN
+
 %start <Lib.Ast.program> program
 
 %%
 
+any_ident:
+	| id=IDENT { id }
+	| id=STRUCT_ID { id }
+
 program:
-	| PACKAGE pkg=IDENT opt_semi imports=import_decls decls=decls EOF
+	| PACKAGE pkg=any_ident opt_semi imports=import_decls decls=decls EOF
 			{ { package = pkg; imports; decls } }
 
 opt_semi:
@@ -50,7 +66,7 @@ import_decl:
 	| IMPORT LPAREN paths=import_paths RPAREN { paths }
 
 import_paths:
-	|                          { [] }
+	|                           { [] }
 	| path=STRINGLIT opt_semi rest=import_paths { path :: rest }
 
 decls:
@@ -64,11 +80,23 @@ decls_tail:
 decl:
 	| f=func_decl { FuncDecl f }
 	| v=var_decl { v }
+	| TYPE name=STRUCT_ID STRUCT LBRACE fields=struct_fields RBRACE { TypeDecl (name, TStruct fields) }
+
+struct_fields:
+	|                                      { [] }
+	| f=struct_field fs=struct_fields_tail { f :: fs }
+
+struct_fields_tail:
+	|                            { [] }
+	| SEMICOLON fs=struct_fields { fs }
+
+struct_field:
+	| name=any_ident t=go_type { (name, t) }
 
 var_decl:
-	| VAR name=IDENT typ=go_type init=typed_var_init_opt
+	| VAR name=any_ident typ=go_type init=typed_var_init_opt
 			{ VarDecl (name, Some typ, init) }
-	| VAR name=IDENT ASSIGN value=expr
+	| VAR name=any_ident ASSIGN value=expr
 			{ VarDecl (name, None, Some value) }
 
 typed_var_init_opt:
@@ -76,15 +104,8 @@ typed_var_init_opt:
 	| ASSIGN value=expr  { Some value }
 
 func_decl:
-	| FUNC name=IDENT LPAREN params=params_opt RPAREN ret=ret_opt body=block
-			{
-				{
-					name;
-					params;
-					ret;
-					body;
-				}
-			}
+	| FUNC name=any_ident LPAREN params=params_opt RPAREN ret=ret_opt body=block
+			{ { name; params; ret; body; } }
 
 params_opt:
 	|               { [] }
@@ -95,7 +116,7 @@ param_list:
 	| p=param COMMA ps=param_list { p :: ps }
 
 param:
-	| name=IDENT t=go_type { (name, t) }
+	| name=any_ident t=go_type { (name, t) }
 
 ret_opt:
 	|                      { [] }
@@ -107,7 +128,7 @@ go_types:
 	| t=go_type COMMA ts=go_types { t :: ts }
 
 go_type:
-	| t=IDENT { parse_type t }
+	| t=any_ident { parse_type t }
 	| LBRACK RBRACK t=go_type { TSlice t }
 
 block:
@@ -128,24 +149,56 @@ stmt:
 			{ If (cond, then_block, Some else_block) }
 	| FOR cond=expr body=block
 			{ ForCond (cond, body) }
-	| FOR key=IDENT COMMA value=IDENT DECL_ASSIGN RANGE collection=expr body=block
+	| FOR key=any_ident COMMA value=any_ident DECL_ASSIGN RANGE collection=expr body=block
 			{ ForRange (key, value, collection, body) }
 	| RETURN exprs=exprs_opt
 			{ Return exprs }
-	| lhs=assign_lhs ASSIGN rhs=expr
+	| lhs=expr ASSIGN rhs=expr
 			{ Assign ([ lhs ], [ rhs ]) }
-	| name=IDENT DECL_ASSIGN rhs=expr
+	| name=any_ident DECL_ASSIGN rhs=expr
 			{ ShortDecl (name, rhs) }
-	| name=IDENT INC
+	| name=any_ident INC
 			{ ExprStmt (UnOp (Inc, Var name)) }
-	| name=IDENT DEC
+	| name=any_ident DEC
 			{ ExprStmt (UnOp (Dec, Var name)) }
-	| c=call_expr
-			{ ExprStmt c }
+	| e=expr { ExprStmt e }
 
-assign_lhs:
-	| name=IDENT { Var name }
-	| obj=IDENT DOT field=IDENT { Selector (Var obj, field) }
+expr:
+	| e=primary             { e }
+	| l=expr OR_OR r=expr   { BinOp (Or, l, r) }
+	| l=expr AND_AND r=expr { BinOp (And, l, r) }
+	| l=expr EQ_EQ r=expr   { BinOp (Eq, l, r) }
+	| l=expr NOT_EQ r=expr  { BinOp (Neq, l, r) }
+	| l=expr LT r=expr      { BinOp (Lt, l, r) }
+	| l=expr GT r=expr      { BinOp (Gt, l, r) }
+	| l=expr LTE r=expr     { BinOp (Leq, l, r) }
+	| l=expr GTE r=expr     { BinOp (Geq, l, r) }
+	| l=expr PLUS r=expr    { BinOp (Add, l, r) }
+	| l=expr MINUS r=expr   { BinOp (Sub, l, r) }
+	| l=expr STAR r=expr    { BinOp (Mul, l, r) }
+	| l=expr SLASH r=expr   { BinOp (Div, l, r) }
+	| l=expr MOD r=expr     { BinOp (Mod, l, r) }
+	| BANG e=expr           { UnOp (Not, e) }
+	| MINUS e=expr %prec BANG { UnOp (Neg, e) }
+
+primary:
+	| n=INTLIT        { Lit (IntLit n) }
+	| s=STRINGLIT     { Lit (StringLit s) }
+	| TRUE            { Lit (BoolLit true) }
+	| FALSE           { Lit (BoolLit false) }
+	| NIL             { Lit NilLit }
+	| name=any_ident  { Var name }
+	| LPAREN e=expr RPAREN { e }
+	| fn=any_ident LPAREN args=args_opt RPAREN { Call (fn, args) }
+	| e=primary DOT field=any_ident { Selector (e, field) }
+	| e=primary DOT field=any_ident LPAREN args=args_opt RPAREN { MethodCall (e, field, args) }
+	| e=primary LBRACK idx=expr RBRACK { Index (e, idx) }
+	| t_name=STRUCT_ID LBRACE args=args_opt RBRACE { StructLit (t_name, args) }
+	| LBRACK RBRACK t=go_type LBRACE args=args_opt RBRACE { SliceLit (t, args) }
+
+args_opt:
+	|                { [] }
+	| args=expr_list { args }
 
 exprs_opt:
 	|               { [] }
@@ -154,63 +207,3 @@ exprs_opt:
 expr_list:
 	| e=expr                    { [ e ] }
 	| e=expr COMMA es=expr_list { e :: es }
-
-expr:
-	| e=or_expr { e }
-
-or_expr:
-	| e=and_expr                  { e }
-	| l=or_expr OR_OR r=and_expr  { BinOp (Or, l, r) }
-
-and_expr:
-	| e=eq_expr                    { e }
-	| l=and_expr AND_AND r=eq_expr { BinOp (And, l, r) }
-
-eq_expr:
-	| e=rel_expr                   { e }
-	| l=eq_expr EQ_EQ r=rel_expr   { BinOp (Eq, l, r) }
-	| l=eq_expr NOT_EQ r=rel_expr  { BinOp (Neq, l, r) }
-
-rel_expr:
-	| e=add_expr                 { e }
-	| l=rel_expr LT r=add_expr   { BinOp (Lt, l, r) }
-	| l=rel_expr GT r=add_expr   { BinOp (Gt, l, r) }
-	| l=rel_expr LTE r=add_expr  { BinOp (Leq, l, r) }
-	| l=rel_expr GTE r=add_expr  { BinOp (Geq, l, r) }
-
-add_expr:
-	| e=mul_expr                  { e }
-	| l=add_expr PLUS r=mul_expr  { BinOp (Add, l, r) }
-	| l=add_expr MINUS r=mul_expr { BinOp (Sub, l, r) }
-
-mul_expr:
-	| e=unary_expr                  { e }
-	| l=mul_expr STAR r=unary_expr  { BinOp (Mul, l, r) }
-	| l=mul_expr SLASH r=unary_expr { BinOp (Div, l, r) }
-	| l=mul_expr MOD r=unary_expr   { BinOp (Mod, l, r) }
-
-unary_expr:
-	| e=primary        { e }
-	| BANG e=unary_expr  { UnOp (Not, e) }
-	| MINUS e=unary_expr { UnOp (Neg, e) }
-
-call_expr:
-	| fn=IDENT LPAREN args=args_opt RPAREN
-			{ Call (fn, args) }
-	| obj=IDENT DOT method_name=IDENT LPAREN args=args_opt RPAREN
-			{ MethodCall (Var obj, method_name, args) }
-
-primary:
-	| n=INTLIT        { Lit (IntLit n) }
-	| s=STRINGLIT     { Lit (StringLit s) }
-	| TRUE            { Lit (BoolLit true) }
-	| FALSE           { Lit (BoolLit false) }
-	| NIL             { Lit NilLit }
-	| c=call_expr     { c }
-	| obj=IDENT DOT field=IDENT { Selector (Var obj, field) }
-	| name=IDENT      { Var name }
-	| LPAREN e=expr RPAREN { e }
-
-args_opt:
-	|                { [] }
-	| args=expr_list { args }

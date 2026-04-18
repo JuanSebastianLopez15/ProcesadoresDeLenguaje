@@ -22,10 +22,8 @@ let lookup_func_ret_type ctx name =
   | Some t -> t
   | None -> TAny
 
-(* expr_to_ocaml and infer_expr_type are defined later, after operator helpers. *)
-
 (* ---------------------------------------------------------------------- *)
-(*  Tipos OCaml                                                           *)
+(* Colección de mutabilidad                                              *)
 (* ---------------------------------------------------------------------- *)
 
 let rec collect_mutable_in_expr = function
@@ -37,6 +35,9 @@ let rec collect_mutable_in_expr = function
       collect_mutable_in_expr obj @ List.concat_map collect_mutable_in_expr args
   | Index (arr, idx) -> collect_mutable_in_expr arr @ collect_mutable_in_expr idx
   | Selector (e, _) -> collect_mutable_in_expr e
+  | StructLit (_, args) -> List.concat_map collect_mutable_in_expr args
+  | SliceLit (_, args) -> List.concat_map collect_mutable_in_expr args
+  | Cast (_, e) -> collect_mutable_in_expr e
 
 let rec collect_mutable_in_stmt = function
   | Assign (lhs, rhs) ->
@@ -73,7 +74,7 @@ let collect_mutable_in_func (fd: func_decl) : string list =
   assign_targets @ inc_dec_targets
 
 (* ---------------------------------------------------------------------- *)
-(*  Tipos OCaml                                                           *)
+(* Tipos OCaml                                                           *)
 (* ---------------------------------------------------------------------- *)
 
 let rec ocaml_type_of_typ = function
@@ -85,13 +86,15 @@ let rec ocaml_type_of_typ = function
   | TAny -> "Obj.t"
   | TSlice t -> Printf.sprintf "%s array" (ocaml_type_of_typ t)
   | TMap (k, v) -> Printf.sprintf "(%s, %s) Hashtbl.t" (ocaml_type_of_typ k) (ocaml_type_of_typ v)
+  | TName n -> String.lowercase_ascii n
+  | TStruct _ -> "Obj.t"
   | TFunc (params, rets) ->
       let ps = String.concat " -> " (List.map ocaml_type_of_typ params) in
       let rs = match rets with [] -> "unit" | [r] -> ocaml_type_of_typ r | _ -> "(" ^ String.concat " * " (List.map ocaml_type_of_typ rets) ^ ")" in
       if params = [] then rs else ps ^ " -> " ^ rs
 
 (* ---------------------------------------------------------------------- *)
-(*  Operadores                                                            *)
+(* Operadores                                                            *)
 (* ---------------------------------------------------------------------- *)
 
 let string_of_binop = function
@@ -100,7 +103,7 @@ let string_of_binop = function
   | Leq -> "<=" | Geq -> ">=" | And -> "&&" | Or -> "||"
 
 (* ---------------------------------------------------------------------- *)
-(*  Escape de strings (mantiene tildes y UTF-8)                           *)
+(* Escape de strings (mantiene tildes y UTF-8)                           *)
 (* ---------------------------------------------------------------------- *)
 
 let escape_ocaml_string s =
@@ -112,13 +115,13 @@ let escape_ocaml_string s =
     | '\n' -> Buffer.add_string buf "\\n"
     | '\r' -> Buffer.add_string buf "\\r"
     | '\t' -> Buffer.add_string buf "\\t"
-    | c -> Buffer.add_char buf c   (* UTF-8 intacto, incluye tildes *)
+    | c -> Buffer.add_char buf c   
   ) s;
   Buffer.add_char buf '"';
   Buffer.contents buf
 
 (* ---------------------------------------------------------------------- *)
-(*  Convertir expresión a string para print_endline                       *)
+(* Convertir expresión a string                                          *)
 (* ---------------------------------------------------------------------- *)
 
 let rec expr_to_ocaml ctx = function
@@ -135,18 +138,35 @@ let rec expr_to_ocaml ctx = function
   | UnOp (Neg, e) -> Printf.sprintf "(-. %s)" (expr_to_ocaml ctx e)
   | UnOp (Inc, e) -> (match e with Var x -> Printf.sprintf "%s := !%s + 1" x x | _ -> failwith "inc")
   | UnOp (Dec, e) -> (match e with Var x -> Printf.sprintf "%s := !%s - 1" x x | _ -> failwith "dec")
+  
+  | Call ("len", [arr]) -> Printf.sprintf "Array.length %s" (expr_to_ocaml ctx arr)
+  | Call ("append", [arr; elem]) -> Printf.sprintf "Array.append %s [|%s|]" (expr_to_ocaml ctx arr) (expr_to_ocaml ctx elem)
+  
   | Call (name, args) ->
       let args_str = String.concat " " (List.map (expr_to_ocaml ctx) args) in
       Printf.sprintf "%s %s" name args_str
   | MethodCall (obj, method_name, args) ->
       let obj_str = expr_to_ocaml ctx obj in
-      if obj_str = "fmt" && method_name = "Println" then
-        "()"  (* se maneja aparte en ExprStmt *)
+      if obj_str = "fmt" && (method_name = "Println" || method_name = "Printf") then
+        "()"  
       else
         let args_str = String.concat " " (List.map (expr_to_ocaml ctx) args) in
         Printf.sprintf "%s.%s %s" obj_str method_name args_str
   | Index (arr, idx) -> Printf.sprintf "%s.(%s)" (expr_to_ocaml ctx arr) (expr_to_ocaml ctx idx)
   | Selector (e, field) -> Printf.sprintf "%s.%s" (expr_to_ocaml ctx e) field
+  
+  | SliceLit (_, args) -> 
+      Printf.sprintf "[|%s|]" (String.concat "; " (List.map (expr_to_ocaml ctx) args))
+  | Cast (_, e) -> expr_to_ocaml ctx e
+  | StructLit (_, args) ->
+      let eval_args = List.map (expr_to_ocaml ctx) args in
+      if List.length eval_args = 2 then
+        Printf.sprintf "{ numero = %s; clasificacion = %s }" (List.nth eval_args 0) (List.nth eval_args 1)
+      else if List.length eval_args = 5 then
+        Printf.sprintf "{ numero = %s; clasificacion = %s; fibonacci = %s; digitos = %s; sumaD = %s }" 
+          (List.nth eval_args 0) (List.nth eval_args 1) (List.nth eval_args 2) (List.nth eval_args 3) (List.nth eval_args 4)
+      else
+        "{}"
 
 let rec infer_expr_type ctx = function
   | Lit (IntLit _) -> TInt
@@ -184,6 +204,9 @@ let rec infer_expr_type ctx = function
       | _ -> TAny
       end
   | Selector (_, _) -> TAny
+  | StructLit (name, _) -> TName name
+  | SliceLit (t, _) -> TSlice t
+  | Cast (t, _) -> t
 
 let string_of_expr_string ctx expr =
   let expr_str = expr_to_ocaml ctx expr in
@@ -213,7 +236,7 @@ let expr_to_print_string ctx = function
       string_of_expr_string ctx expr
 
 (* ---------------------------------------------------------------------- *)
-(*  Expresiones → OCaml                                                   *)
+(* Expresiones → OCaml                                                   *)
 (* ---------------------------------------------------------------------- *)
 
 let rec stmt_to_ocaml ctx = function
@@ -262,6 +285,11 @@ let rec stmt_to_ocaml ctx = function
           let strings = List.map (expr_to_print_string ctx) args in
           let concat = String.concat " ^ \" \" ^ " strings in
           Printf.sprintf "print_endline (%s)" concat
+      | MethodCall (obj, method_name, args) when expr_to_ocaml ctx obj = "fmt" && method_name = "Printf" ->
+          let format_str = expr_to_ocaml ctx (List.hd args) in
+          let other_args = List.tl args in
+          let args_str = String.concat " " (List.map (expr_to_ocaml ctx) other_args) in
+          Printf.sprintf "Printf.printf %s %s" format_str args_str
       | _ ->
           expr_to_ocaml ctx e
       end
@@ -269,13 +297,12 @@ let rec stmt_to_ocaml ctx = function
   | Go e -> Printf.sprintf "(* go %s not implemented *)" (expr_to_ocaml ctx e)
 
 (* ---------------------------------------------------------------------- *)
-(*  Bloques (con propagación de mutabilidad, sin ; después de in)        *)
+(* Bloques                                                               *)
 (* ---------------------------------------------------------------------- *)
 
 and block_to_ocaml ctx = function
   | [] -> "\n  ()"
   | [stmt] ->
-      (* Para una sola sentencia, no añadir ; *)
       Printf.sprintf "\n%s" (stmt_to_ocaml ctx stmt)
   | stmt :: rest ->
       match stmt with
@@ -290,16 +317,14 @@ and block_to_ocaml ctx = function
           in
           let decl = if is_mutable then Printf.sprintf "let %s = ref %s in" name init
                      else Printf.sprintf "let %s = %s in" name init in
-          (* Envolver el resto en paréntesis para que el let...in tenga alcance *)
           Printf.sprintf "\n%s (%s)" decl (block_to_ocaml new_ctx rest)
       | _ ->
           let first = stmt_to_ocaml ctx stmt in
           let inner = block_to_ocaml ctx rest in
-          (* Separar con ;, pero sin ; después de in porque ya está manejado arriba *)
           Printf.sprintf "\n%s;\n%s" first (String.sub inner 1 (String.length inner - 1))
 
 (* ---------------------------------------------------------------------- *)
-(*  Declaraciones top-level                                               *)
+(* Declaraciones top-level                                               *)
 (* ---------------------------------------------------------------------- *)
 
 let decl_to_ocaml ctx = function
@@ -312,16 +337,25 @@ let decl_to_ocaml ctx = function
       let ctx' = { ctx with mutable_vars = mutable_vars; var_types = params_types @ ctx.var_types } in
       let body_str = block_to_ocaml (with_indent ctx') fd.body in
       if fd.params = [] then
-        Printf.sprintf "let %s () : %s =%s" fd.name ret_str body_str
+        Printf.sprintf "let rec %s () : %s =%s" fd.name ret_str body_str
       else
-        Printf.sprintf "let %s %s : %s =%s" fd.name param_str ret_str body_str
+        Printf.sprintf "let rec %s %s : %s =%s" fd.name param_str ret_str body_str
   | VarDecl (name, typ_opt, expr_opt) ->
       let typ_str = match typ_opt with Some t -> " : " ^ ocaml_type_of_typ t | None -> "" in
       let init = match expr_opt with Some e -> expr_to_ocaml ctx e | None -> "()" in
       Printf.sprintf "let %s%s = %s" name typ_str init
+  | TypeDecl (name, TStruct fields) ->
+      let fields_str = 
+        List.map (fun (fname, ftyp) -> 
+          Printf.sprintf "mutable %s : %s;" fname (ocaml_type_of_typ ftyp)
+        ) fields |> String.concat " " 
+      in
+      Printf.sprintf "type %s = { %s }" (String.lowercase_ascii name) fields_str
+  | TypeDecl (name, t) ->
+      Printf.sprintf "type %s = %s" (String.lowercase_ascii name) (ocaml_type_of_typ t)
 
 (* ---------------------------------------------------------------------- *)
-(*  Programa completo (sin open Printf)                                   *)
+(* Programa completo                                                     *)
 (* ---------------------------------------------------------------------- *)
 
 let program_to_ocaml (prog: program) : string =

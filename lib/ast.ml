@@ -1,5 +1,4 @@
 (* AST rico para frontend + middleware (typecheck). *)
-
 type typ =
   | TInt
   | TFloat64
@@ -11,6 +10,8 @@ type typ =
   | TSlice of typ
   | TMap of typ * typ
   | TFunc of typ list * typ list
+  | TStruct of (string * typ) list  (* NUEVO: representa los campos de un struct *)
+  | TName of string                 (* NUEVO: representa un tipo personalizado como "Resultado" *)
 
 type literal =
   | IntLit of int
@@ -49,6 +50,9 @@ type expr =
   | MethodCall of expr * string * expr list
   | Index of expr * expr
   | Selector of expr * string
+  | StructLit of string * expr list  (* NUEVO: instanciar struct Resultado{num, clas} *)
+  | SliceLit of typ * expr list      (* NUEVO: instanciar arreglo []int64{1, 2, 3} *)
+  | Cast of typ * expr               (* NUEVO: casteos explícitos como int64(-1) o []rune("palabra") *)
 
 type stmt =
   | Assign of expr list * expr list
@@ -71,6 +75,7 @@ type func_decl = {
 type decl =
   | FuncDecl of func_decl
   | VarDecl of string * typ option * expr option
+  | TypeDecl of string * typ         (* NUEVO: declarar 'type Resultado struct {...}' *)
 
 type program = {
   package : string;
