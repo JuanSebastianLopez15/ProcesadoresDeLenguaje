@@ -1,0 +1,345 @@
+
+** Conflict (shift/reduce) in state 28.
+** Token involved: RBRACE
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls VAR any_ident INTERFACE LBRACE
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        var_decl 
+                                        VAR any_ident go_type typed_var_init_opt 
+                                                      (?)
+
+** In state 28, looking ahead at RBRACE, shifting is permitted
+** because of the following sub-derivation:
+
+INTERFACE LBRACE . RBRACE 
+
+** In state 28, looking ahead at RBRACE, reducing production
+** rhs_tokens_group ->
+** is permitted because of the following sub-derivation:
+
+INTERFACE LBRACE rhs_tokens_group RBRACE // lookahead token appears
+                 . 
+
+** Conflict (shift/reduce) in state 114.
+** Tokens involved: STRINGLIT LPAREN LBRACE COMMA ASSIGN
+** The following explanations concentrate on token ASSIGN.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls VAR any_ident FUNC LPAREN rhs_tokens_group RPAREN
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        var_decl 
+                                        (?)
+
+** In state 114, looking ahead at ASSIGN, shifting is permitted
+** because of the following sub-derivation:
+
+VAR any_ident go_type typed_var_init_opt 
+              FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens 
+                                                  rhs_token rhs_tokens 
+                                                  . ASSIGN 
+
+** In state 114, looking ahead at ASSIGN, reducing production
+** rhs_tokens ->
+** is permitted because of the following sub-derivation:
+
+VAR any_ident go_type typed_var_init_opt // lookahead token appears because typed_var_init_opt can begin with ASSIGN
+              FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens // lookahead token is inherited
+                                                  . 
+
+** Conflict (shift/reduce) in state 116.
+** Tokens involved: STRINGLIT LPAREN LBRACE COMMA ASSIGN
+** The following explanations concentrate on token ASSIGN.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls VAR any_ident FUNC LPAREN rhs_tokens_group RPAREN rhs_token
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        var_decl 
+                                        (?)
+
+** In state 116, looking ahead at ASSIGN, shifting is permitted
+** because of the following sub-derivation:
+
+VAR any_ident go_type typed_var_init_opt 
+              FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens 
+                                                  rhs_token rhs_tokens 
+                                                            rhs_token rhs_tokens 
+                                                            . ASSIGN 
+
+** In state 116, looking ahead at ASSIGN, reducing production
+** rhs_tokens ->
+** is permitted because of the following sub-derivation:
+
+VAR any_ident go_type typed_var_init_opt // lookahead token appears because typed_var_init_opt can begin with ASSIGN
+              FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens // lookahead token is inherited
+                                                  rhs_token rhs_tokens // lookahead token is inherited
+                                                            . 
+
+** Conflict (reduce/reduce) in state 121.
+** Tokens involved: STRINGLIT SEMICOLON RPAREN RBRACK RBRACE LPAREN LBRACE EOF COMMA ASSIGN
+** The following explanations concentrate on token SEMICOLON.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls VAR any_ident CHAN ARROW CHAN go_type
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail // lookahead token appears because decls_tail can begin with SEMICOLON
+                                        var_decl // lookahead token is inherited
+                                        VAR any_ident go_type typed_var_init_opt // lookahead token is inherited because typed_var_init_opt can vanish
+                                                      (?)
+
+** In state 121, looking ahead at SEMICOLON, reducing production
+** go_type -> CHAN go_type
+** is permitted because of the following sub-derivation:
+
+CHAN ARROW go_type // lookahead token is inherited
+           CHAN go_type . 
+
+** In state 121, looking ahead at SEMICOLON, reducing production
+** go_type -> ARROW CHAN go_type
+** is permitted because of the following sub-derivation:
+
+CHAN go_type // lookahead token is inherited
+     ARROW CHAN go_type . 
+
+** Conflict (shift/reduce) in state 150.
+** Token involved: COMMA
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls FUNC any_ident LPAREN params_opt RPAREN LPAREN any_ident
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        func_decl 
+                                        FUNC any_ident LPAREN params_opt RPAREN ret_opt block 
+                                                                                LPAREN go_types RPAREN 
+                                                                                       (?)
+
+** In state 150, looking ahead at COMMA, reducing production
+** go_type -> any_ident
+** is permitted because of the following sub-derivation:
+
+go_type_item COMMA go_types // lookahead token appears
+go_type // lookahead token is inherited
+any_ident . 
+
+** In state 150, looking ahead at COMMA, shifting is permitted
+** because of the following sub-derivation:
+
+go_type_item 
+ident_list go_type 
+any_ident . COMMA ident_list 
+
+** Conflict (shift/reduce) in state 157.
+** Token involved: LBRACE
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls FUNC any_ident LPAREN params_opt RPAREN ret_opt LBRACE IF STRUCT_ID
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        func_decl 
+                                        FUNC any_ident LPAREN params_opt RPAREN ret_opt block 
+                                                                                        LBRACE stmts RBRACE 
+                                                                                               stmt stmts_tail 
+                                                                                               (?)
+
+** In state 157, looking ahead at LBRACE, reducing production
+** any_ident -> STRUCT_ID
+** is permitted because of the following sub-derivation:
+
+IF expr block // lookahead token appears because block can begin with LBRACE
+   primary // lookahead token is inherited
+   any_ident // lookahead token is inherited
+   STRUCT_ID . 
+
+** In state 157, looking ahead at LBRACE, shifting is permitted
+** because of the following sub-derivation:
+
+IF expr block 
+   primary 
+   STRUCT_ID . LBRACE args_opt RBRACE 
+
+** Conflict (reduce/reduce) in state 265.
+** Tokens involved: SEMICOLON EOF
+** The following explanations concentrate on token SEMICOLON.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls TYPE any_ident STRUCT LBRACE struct_fields RBRACE
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail // lookahead token appears because decls_tail can begin with SEMICOLON
+                                        TYPE any_ident tdecl_rhs // lookahead token is inherited
+                                                       (?)
+
+** In state 265, looking ahead at SEMICOLON, reducing production
+** go_type -> STRUCT LBRACE struct_fields RBRACE
+** is permitted because of the following sub-derivation:
+
+go_type // lookahead token is inherited
+STRUCT LBRACE struct_fields RBRACE . 
+
+** In state 265, looking ahead at SEMICOLON, reducing production
+** tdecl_rhs -> STRUCT LBRACE struct_fields RBRACE
+** is permitted because of the following sub-derivation:
+
+STRUCT LBRACE struct_fields RBRACE . 
+
+** Conflict (reduce/reduce) in state 270.
+** Tokens involved: SEMICOLON EOF
+** The following explanations concentrate on token SEMICOLON.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls TYPE any_ident FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail // lookahead token appears because decls_tail can begin with SEMICOLON
+                                        TYPE any_ident tdecl_rhs // lookahead token is inherited
+                                                       (?)
+
+** In state 270, looking ahead at SEMICOLON, reducing production
+** go_type -> FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens
+** is permitted because of the following sub-derivation:
+
+go_type // lookahead token is inherited
+FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens . 
+
+** In state 270, looking ahead at SEMICOLON, reducing production
+** tdecl_rhs -> FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens
+** is permitted because of the following sub-derivation:
+
+FUNC LPAREN rhs_tokens_group RPAREN rhs_tokens . 
+
+** Conflict (reduce/reduce) in state 353.
+** Tokens involved: SEMICOLON RBRACE
+** The following explanations concentrate on token SEMICOLON.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls FUNC any_ident LPAREN params_opt RPAREN ret_opt LBRACE expr INC
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        func_decl 
+                                        FUNC any_ident LPAREN params_opt RPAREN ret_opt block 
+                                                                                        LBRACE stmts RBRACE 
+                                                                                               stmt stmts_tail // lookahead token appears because stmts_tail can begin with SEMICOLON
+                                                                                               (?)
+
+** In state 353, looking ahead at SEMICOLON, reducing production
+** expr -> expr INC
+** is permitted because of the following sub-derivation:
+
+expr // lookahead token is inherited
+expr INC . 
+
+** In state 353, looking ahead at SEMICOLON, reducing production
+** stmt -> expr INC
+** is permitted because of the following sub-derivation:
+
+expr INC . 
+
+** Conflict (reduce/reduce) in state 354.
+** Tokens involved: SEMICOLON RBRACE
+** The following explanations concentrate on token SEMICOLON.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls FUNC any_ident LPAREN params_opt RPAREN ret_opt LBRACE expr DEC
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        func_decl 
+                                        FUNC any_ident LPAREN params_opt RPAREN ret_opt block 
+                                                                                        LBRACE stmts RBRACE 
+                                                                                               stmt stmts_tail // lookahead token appears because stmts_tail can begin with SEMICOLON
+                                                                                               (?)
+
+** In state 354, looking ahead at SEMICOLON, reducing production
+** expr -> expr DEC
+** is permitted because of the following sub-derivation:
+
+expr // lookahead token is inherited
+expr DEC . 
+
+** In state 354, looking ahead at SEMICOLON, reducing production
+** stmt -> expr DEC
+** is permitted because of the following sub-derivation:
+
+expr DEC . 
+
+** Conflict (shift/reduce) in state 357.
+** Tokens involved: INC DEC
+** The following explanations concentrate on token INC.
+** This state is reached from program after reading:
+
+PACKAGE any_ident opt_semi import_decls FUNC any_ident LPAREN params_opt RPAREN ret_opt LBRACE any_ident
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+PACKAGE any_ident opt_semi import_decls decls EOF 
+                                        decl decls_tail 
+                                        func_decl 
+                                        FUNC any_ident LPAREN params_opt RPAREN ret_opt block 
+                                                                                        LBRACE stmts RBRACE 
+                                                                                               stmt stmts_tail 
+                                                                                               (?)
+
+** In state 357, looking ahead at INC, reducing production
+** primary -> any_ident
+** is permitted because of the following sub-derivation:
+
+expr INC // lookahead token appears
+primary // lookahead token is inherited
+any_ident . 
+
+** In state 357, looking ahead at INC, shifting is permitted
+** because of the following sub-derivation:
+
+any_ident . INC 

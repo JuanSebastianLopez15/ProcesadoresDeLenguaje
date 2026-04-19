@@ -2,10 +2,11 @@ type token =
   | PACKAGE | IMPORT | FUNC | FOR | IF | ELSE | RETURN | VAR | RANGE
   | TYPE | STRUCT | CONST | DEFER | GO | SWITCH | CASE | DEFAULT
   | MAP | INTERFACE | CHAN
+  | MAKE | NEW
   | TRUE | FALSE | NIL
   | IDENT of string
   | STRUCT_ID of string   (* NUEVO: Token para nombres con Mayúscula *)
-  | INTLIT of int
+  | INTLIT of int64
   | FLOATLIT of float
   | STRINGLIT of string
   | ASSIGN
@@ -20,6 +21,9 @@ type token =
   | AND_AND | OR_OR
   | BANG
   | INC | DEC
+  | PLUS_ASSIGN | MINUS_ASSIGN | STAR_ASSIGN | SLASH_ASSIGN | MOD_ASSIGN
+  | AMP_ASSIGN | PIPE_ASSIGN | CARET_ASSIGN | SHL_ASSIGN | SHR_ASSIGN
+  | AND_NOT | AND_NOT_ASSIGN
   | LPAREN | RPAREN
   | LBRACK | RBRACK
   | LBRACE | RBRACE

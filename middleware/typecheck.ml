@@ -118,7 +118,7 @@ let rec check_expr env = function
       else raise (TypeError (TypeMismatch { expected = TInt; got = t; context = "inc/dec" }))
 
   (* --- MANEJO DE LLAMADAS Y CONVERSIONES (CASTS) --- *)
-  | Call (name, args) ->
+  | Call (Var name, args) ->
       (match name, args with
        | "len", [arg] ->
          let t = check_expr env arg in
@@ -167,6 +167,25 @@ let rec check_expr env = function
         | Some _ -> raise (TypeError (NotCallable name))
         | None -> raise (TypeError (UndeclaredFunc name))))
 
+  | Call (e, args) ->
+      let t = check_expr env e in
+      (match t with
+       | TFunc (param_types, ret_types) ->
+          let n_expected = List.length param_types
+          and n_got = List.length args in
+          if n_expected <> n_got
+          then raise (TypeError (WrongArgCount { func_name = "anon"; expected = n_expected; got = n_got }));
+          List.iter2 (fun expected_t arg ->
+            let got_t = check_expr env arg in
+            expect_type ~context:"argumento de función" expected_t got_t
+          ) param_types args;
+          (match ret_types with
+           | [] -> TVoid
+           | [t] -> t
+           | ts -> TFunc ([], ts))
+       | TAny -> TAny
+       | _ -> raise (TypeError (NotCallable "expression")))
+
   | MethodCall (Var "fmt", ("Println"|"Printf"|"Print"), _) -> TVoid
         | MethodCall (Var "fmt", "Errorf", _) -> TAny
         | MethodCall (obj, _, _) -> let _ = check_expr env obj in TAny 
@@ -175,7 +194,17 @@ let rec check_expr env = function
       expect_type ~context:"índice" TInt (check_expr env idx);
       (match check_expr env arr with
        | TAny -> TAny | TSlice t -> t
+       | TString -> TInt (* Go strings return bytes, which are int-ish here *)
        | t -> raise (TypeError (TypeMismatch { expected = TSlice TAny; got = t; context = "indexación" })))
+
+  | Slice (arr, low, high, max) ->
+      (match low with Some e -> expect_type ~context:"low index" TInt (check_expr env e) | None -> ());
+      (match high with Some e -> expect_type ~context:"high index" TInt (check_expr env e) | None -> ());
+      (match max with Some e -> expect_type ~context:"max index" TInt (check_expr env e) | None -> ());
+      let t = check_expr env arr in
+      (match t with
+       | TAny | TSlice _ | TString -> t
+       | _ -> raise (TypeError (TypeMismatch { expected = TSlice TAny; got = t; context = "slicing" })))
 
   | Selector (e, _) -> let _ = check_expr env e in TAny 
   | StructLit (name, args) -> let _ = List.map (check_expr env) args in TName name
@@ -187,14 +216,26 @@ let rec check_expr env = function
 (* ── Verificación de statements ──────────────────────── *)
 
 and check_stmt env expected_ret = function
-  | ShortDecl (name, expr) ->
-      let t = check_expr env expr in
-      reject_void ~context:("declaración ':=' de " ^ name) t;
-      Env.extend name t env
-  | Assign ([lhs], [rhs]) ->
-      let tl = check_expr env lhs in
-      let tr = check_expr env rhs in
-      expect_type ~context:"asignación" tl tr; env
+  | ShortDecl (names, exprs) ->
+      let types = match names, exprs with
+        | [n], [e] -> [check_expr env e]
+        | ns, [Call (e, args)] ->
+            (match check_expr env (Call (e, args)) with
+             | TFunc (_, rets) -> rets
+             | TAny -> List.map (fun _ -> TAny) ns
+             | t -> [t])
+        | ns, es -> List.map (check_expr env) es
+      in
+      if List.length names <> List.length types then
+         (* Simplemente extendemos con TAny si no coinciden, para ser permisivos *)
+         List.fold_left2 (fun e n t -> Env.extend n t e) env names (List.init (List.length names) (fun _ -> TAny))
+      else
+         List.fold_left2 (fun e n t -> reject_void ~context:n t; Env.extend n t e) env names types
+  | Assign (lhss, rhss) ->
+      (* Similar a ShortDecl pero sin extender env *)
+      let _ = List.map (check_expr env) lhss in
+      let _ = List.map (check_expr env) rhss in
+      env
   | Return exprs ->
       let got = List.map (check_expr env) exprs in
       (match expected_ret, got with

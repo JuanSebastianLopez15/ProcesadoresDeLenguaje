@@ -18,14 +18,15 @@ let parse_type = function
 	| name -> TName name
 %}
 
-/* DEFINICIÓN DE TOKENS (El diccionario que faltaba) */
+/* DEFINICIÓN DE TOKENS */
 %token PACKAGE IMPORT FUNC FOR IF ELSE RETURN VAR RANGE
 %token TYPE STRUCT CONST DEFER GO SWITCH CASE DEFAULT
 %token MAP INTERFACE CHAN
+%token MAKE NEW DELETE REAL IMAG COMPLEX COPY RECOVER PANIC APPEND CAP LEN CLOSE
 %token TRUE FALSE NIL
 %token <string> IDENT
 %token <string> STRUCT_ID
-%token <int> INTLIT
+%token <int64> INTLIT
 %token <float> FLOATLIT
 %token <string> STRINGLIT
 %token ASSIGN DECL_ASSIGN
@@ -36,6 +37,9 @@ let parse_type = function
 %token AND_AND OR_OR
 %token BANG
 %token INC DEC
+%token PLUS_ASSIGN MINUS_ASSIGN STAR_ASSIGN SLASH_ASSIGN MOD_ASSIGN
+%token AMP_ASSIGN PIPE_ASSIGN CARET_ASSIGN SHL_ASSIGN SHR_ASSIGN
+%token AND_NOT AND_NOT_ASSIGN
 %token LPAREN RPAREN
 %token LBRACK RBRACK
 %token LBRACE RBRACE
@@ -102,17 +106,9 @@ decl:
 
 tdecl_rhs:
 	| STRUCT LBRACE fields=struct_fields RBRACE { TStruct fields }
-	| FUNC LPAREN ps=func_sig_opaque RPAREN ret=func_ret_opaque { ignore ps; ignore ret; TAny }
+	| FUNC LPAREN ps=rhs_tokens_group RPAREN ret=rhs_tokens { ignore ps; ignore ret; TAny }
 	| ASSIGN t=go_type { t }
 	| t=go_type { t }
-
-func_sig_opaque:
-	|                          { () }
-	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
-
-func_ret_opaque:
-	|                          { () }
-	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
 
 struct_fields:
 	|                                      { [] }
@@ -183,11 +179,16 @@ const_init_opt:
 	| ASSIGN ignored_rhs { () }
 
 ignored_rhs:
-	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
+	| rhs_tokens { () }
 
 rhs_tokens:
-	|                            { () }
-	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
+	|                                { () }
+	| rhs_token rhs_tokens  { () }
+
+rhs_tokens_group:
+	|                                     { () }
+	| rhs_token rhs_tokens_group { () }
+	| SEMICOLON rhs_tokens_group    { () }
 
 rhs_token:
 	| id=IDENT { ignore id }
@@ -198,56 +199,33 @@ rhs_token:
 	| TRUE { () }
 	| FALSE { () }
 	| NIL { () }
+	| PACKAGE { () }
+	| IMPORT { () }
+	| MAKE { () } | NEW { () } | DELETE { () } | REAL { () } | IMAG { () }
+	| COMPLEX { () } | COPY { () } | RECOVER { () } | PANIC { () }
+	| APPEND { () } | CAP { () } | LEN { () } | CLOSE { () }
 	| ASSIGN { () }
 	| DECL_ASSIGN { () }
 	| COLON { () }
 	| ELLIPSIS { () }
-	| PLUS { () }
-	| MINUS { () }
-	| STAR { () }
-	| SLASH { () }
-	| MOD { () }
-	| AMP { () }
-	| PIPE { () }
-	| CARET { () }
-	| SHL { () }
-	| SHR { () }
-	| ARROW { () }
-	| EQ_EQ { () }
-	| NOT_EQ { () }
-	| LT { () }
-	| GT { () }
-	| LTE { () }
-	| GTE { () }
-	| AND_AND { () }
-	| OR_OR { () }
-	| BANG { () }
-	| INC { () }
-	| DEC { () }
-	| COMMA { () }
-	| SEMICOLON { () }
-	| DOT { () }
-	| MAP { () }
-	| INTERFACE { () }
-	| CHAN { () }
-	| FUNC { () }
-	| STRUCT { () }
-	| RANGE { () }
-	| VAR { () }
-	| CONST { () }
-	| TYPE { () }
-	| IF { () }
-	| ELSE { () }
-	| FOR { () }
-	| RETURN { () }
-	| DEFER { () }
-	| GO { () }
-	| SWITCH { () }
-	| CASE { () }
-	| DEFAULT { () }
-	| LPAREN inner=rhs_tokens RPAREN { ignore inner }
-	| LBRACK inner=rhs_tokens RBRACK { ignore inner }
-	| LBRACE inner=rhs_tokens RBRACE { ignore inner }
+	| PLUS { () } | MINUS { () } | STAR { () } | SLASH { () } | MOD { () }
+	| AMP { () } | PIPE { () } | CARET { () }
+	| SHL { () } | SHR { () } | ARROW { () }
+	| EQ_EQ { () } | NOT_EQ { () } | LT { () } | GT { () } | LTE { () } | GTE { () }
+	| AND_AND { () } | OR_OR { () }
+	| BANG { () } | INC { () } | DEC { () }
+	| PLUS_ASSIGN { () } | MINUS_ASSIGN { () } | STAR_ASSIGN { () } | SLASH_ASSIGN { () } | MOD_ASSIGN { () }
+	| AMP_ASSIGN { () } | PIPE_ASSIGN { () } | CARET_ASSIGN { () } | SHL_ASSIGN { () } | SHR_ASSIGN { () }
+	| AND_NOT { () } | AND_NOT_ASSIGN { () }
+	| COMMA { () } | DOT { () }
+	| MAP { () } | INTERFACE { () } | CHAN { () }
+	| FUNC { () } | STRUCT { () } | RANGE { () }
+	| VAR { () } | CONST { () } | TYPE { () }
+	| IF { () } | ELSE { () } | FOR { () } | RETURN { () }
+	| DEFER { () } | GO { () } | SWITCH { () } | CASE { () } | DEFAULT { () }
+	| LPAREN inner=rhs_tokens_group RPAREN { ignore inner }
+	| LBRACK inner=rhs_tokens_group RBRACK { ignore inner }
+	| LBRACE inner=rhs_tokens_group RBRACE { ignore inner }
 
 typed_var_init_opt:
 	|                    { None }
@@ -260,7 +238,7 @@ func_decl:
 			{ ignore rname; ignore rtyp; ignore body; { name; params; ret; body = []; } }
 
 opaque_block:
-	| LBRACE body=rhs_tokens RBRACE { ignore body; [] }
+	| LBRACE body=rhs_tokens_group RBRACE { ignore body; [] }
 
 params_opt:
 	|               { [] }
@@ -302,8 +280,9 @@ go_type:
 	| CHAN ARROW t=go_type { ignore t; TAny }
 	| ARROW CHAN t=go_type { ignore t; TAny }
 	| INTERFACE LBRACE RBRACE { TAny }
-	| INTERFACE LBRACE body=rhs_tokens RBRACE { ignore body; TAny }
-	| FUNC LPAREN ps=func_sig_opaque RPAREN ret=func_ret_opaque { ignore ps; ignore ret; TAny }
+	| INTERFACE LBRACE body=rhs_tokens_group RBRACE { ignore body; TAny }
+	| FUNC LPAREN ps=rhs_tokens_group RPAREN ret=rhs_tokens { ignore ps; ignore ret; TAny }
+
 block:
 	| LBRACE stmts=stmts RBRACE { stmts }
 
@@ -326,10 +305,10 @@ stmt:
 			{ ForRange (key, value, collection, body) }
 	| RETURN exprs=exprs_opt
 			{ Return exprs }
-	| lhs=expr ASSIGN rhs=expr
-			{ Assign ([ lhs ], [ rhs ]) }
-	| name=any_ident DECL_ASSIGN rhs=expr
-			{ ShortDecl (name, rhs) }
+	| lhs=expr_list ASSIGN rhs=expr_list
+			{ Assign (lhs, rhs) }
+	| names=ident_list DECL_ASSIGN rhs=expr_list
+			{ ShortDecl (names, rhs) }
 	| name=any_ident INC
 			{ ExprStmt (UnOp (Inc, Var name)) }
 	| name=any_ident DEC
@@ -341,12 +320,13 @@ stmt:
 	| DEFER e=expr { Defer e }
 	| GO e=expr { Go e }
 	| VAR name=any_ident _typ=go_type init=typed_var_init_opt
-			{ (match init with Some e -> ShortDecl (name, e) | None -> ShortDecl (name, Lit NilLit)) }
+			{ (match init with Some e -> ShortDecl ([name], [e]) | None -> ShortDecl ([name], [Lit NilLit])) }
 	| VAR name=any_ident ASSIGN value=expr
-			{ ShortDecl (name, value) }
+			{ ShortDecl ([name], [value]) }
 	| CONST name=any_ident ct=const_tail
-			{ ignore ct; ShortDecl (name, Lit NilLit) }
+			{ ignore ct; ShortDecl ([name], [Lit NilLit]) }
 	| e=expr { ExprStmt e }
+	| rhs_tokens_group { ExprStmt (Lit NilLit) } /* Greedy approach for anything else */
 
 expr:
 	| e=primary             { e }
@@ -382,12 +362,34 @@ primary:
 	| NIL             { Lit NilLit }
 	| name=any_ident  { Var name }
 	| LPAREN e=expr RPAREN { e }
-	| fn=any_ident LPAREN args=args_opt RPAREN { Call (fn, args) }
+	| e=primary LPAREN args=args_opt RPAREN { Call (e, args) }
+	| MAKE LPAREN t=go_type COMMA args=expr_list RPAREN { ignore t; Call (Var "make", args) }
+	| MAKE LPAREN t=go_type RPAREN { ignore t; Call (Var "make", []) }
+	| NEW LPAREN t=go_type RPAREN { ignore t; Call (Var "new", []) }
+	| DELETE LPAREN args=args_opt RPAREN { Call (Var "delete", args) }
+	| REAL LPAREN args=args_opt RPAREN { Call (Var "real", args) }
+	| IMAG LPAREN args=args_opt RPAREN { Call (Var "imag", args) }
+	| COMPLEX LPAREN args=args_opt RPAREN { Call (Var "complex", args) }
+	| COPY LPAREN args=args_opt RPAREN { Call (Var "copy", args) }
+	| RECOVER LPAREN args=args_opt RPAREN { Call (Var "recover", args) }
+	| PANIC LPAREN args=args_opt RPAREN { Call (Var "panic", args) }
+	| APPEND LPAREN args=args_opt RPAREN { Call (Var "append", args) }
+	| CAP LPAREN args=args_opt RPAREN { Call (Var "cap", args) }
+	| LEN LPAREN args=args_opt RPAREN { Call (Var "len", args) }
+	| CLOSE LPAREN args=args_opt RPAREN { Call (Var "close", args) }
+	| LBRACK RBRACK t=go_type LPAREN e=expr RPAREN { Cast (TSlice t, e) }
 	| e=primary DOT field=any_ident { Selector (e, field) }
 	| e=primary DOT field=any_ident LPAREN args=args_opt RPAREN { MethodCall (e, field, args) }
-	| e=primary LBRACK idx=expr RBRACK { Index (e, idx) }
+	| e=primary LBRACK i=expr RBRACK { Index (e, i) }
+	| e=primary LBRACK low=expr_opt COLON high=expr_opt RBRACK { Slice (e, low, high, None) }
+	| e=primary LBRACK low=expr_opt COLON high=expr COLON max=expr RBRACK { Slice (e, low, Some high, Some max) }
 	| t_name=STRUCT_ID LBRACE args=args_opt RBRACE { StructLit (t_name, args) }
 	| LBRACK RBRACK t=go_type LBRACE args=args_opt RBRACE { SliceLit (t, args) }
+
+
+expr_opt:
+    |            { None }
+    | e=expr     { Some e }
 
 args_opt:
 	|                { [] }

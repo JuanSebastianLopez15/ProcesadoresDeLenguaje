@@ -39,20 +39,20 @@ let mk_program decls =
   }
 
 let test_lit_int_type _ =
-  assert_equal TInt (Typecheck.check_expr Env.empty (Lit (IntLit 7)))
+  assert_equal TInt (Typecheck.check_expr Env.empty (Lit (IntLit 7L)))
 
 let test_arith_type _ =
-  let expr = BinOp (Add, Lit (IntLit 2), Lit (IntLit 3)) in
+  let expr = BinOp (Add, Lit (IntLit 2L), Lit (IntLit 3L)) in
   assert_equal TInt (Typecheck.check_expr Env.empty expr)
 
 let test_comparison_type _ =
   let env = Env.extend "x" TInt Env.empty in
-  let expr = BinOp (Eq, Var "x", Lit (IntLit 10)) in
+  let expr = BinOp (Eq, Var "x", Lit (IntLit 10L)) in
   assert_equal TBool (Typecheck.check_expr env expr)
 
 let test_call_return_type _ =
   let env = Env.extend "doble" (TFunc ([ TInt ], [ TInt ])) Env.empty in
-  let expr = Call ("doble", [ Lit (IntLit 4) ]) in
+  let expr = Call (Var "doble", [ Lit (IntLit 4L) ]) in
   assert_equal TInt (Typecheck.check_expr env expr)
 
 let test_undeclared_var_exception _ =
@@ -61,14 +61,14 @@ let test_undeclared_var_exception _ =
   | _ -> assert_failure "Se esperaba UndeclaredVar"
 
 let test_type_mismatch_exception _ =
-  let expr = BinOp (Add, Lit (StringLit "hola"), Lit (IntLit 1)) in
+  let expr = BinOp (Add, Lit (StringLit "hola"), Lit (IntLit 1L)) in
   match assert_type_error (fun () -> Typecheck.check_expr Env.empty expr) with
   | Typecheck.TypeMismatch _ -> ()
   | _ -> assert_failure "Se esperaba TypeMismatch"
 
 let test_wrong_arg_count_exception _ =
   let env = Env.extend "doble" (TFunc ([ TInt ], [ TInt ])) Env.empty in
-  match assert_type_error (fun () -> Typecheck.check_expr env (Call ("doble", []))) with
+  match assert_type_error (fun () -> Typecheck.check_expr env (Call (Var "doble", []))) with
   | Typecheck.WrongArgCount { func_name; expected; got } ->
       assert_equal "doble" func_name;
       assert_equal 1 expected;
@@ -78,7 +78,7 @@ let test_wrong_arg_count_exception _ =
 let test_if_condition_error _ =
   let prog =
     mk_program
-      [ mk_func "main" ~body:[ If (Lit (IntLit 1), [], None) ] ]
+      [ mk_func "main" ~body:[ If (Lit (IntLit 1L), [], None) ] ]
   in
   assert_program_error_contains ~needle:"condición if" prog
 

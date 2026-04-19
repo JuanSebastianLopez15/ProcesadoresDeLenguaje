@@ -39,9 +39,9 @@ let test_parse_if_else_con_llamadas _ =
               params = [];
               ret = [];
               body =
-                [ ShortDecl ("x", Lit (IntLit 0));
+                [ ShortDecl ("x", Lit (IntLit 0L));
                   If
-                    ( BinOp (Eq, Var "x", Lit (IntLit 0)),
+                    ( BinOp (Eq, Var "x", Lit (IntLit 0L)),
                       [ ExprStmt
                           (MethodCall
                              (Var "fmt", "Println", [ Lit (StringLit "ok") ])) ],
@@ -99,8 +99,8 @@ let test_parse_precedencia_y_unarios _ =
           ( Not,
             BinOp
               ( Eq,
-                BinOp (Add, Lit (IntLit 1), BinOp (Mul, Lit (IntLit 2), Lit (IntLit 3))),
-                Lit (IntLit 7) ) ),
+                BinOp (Add, Lit (IntLit 1L), BinOp (Mul, Lit (IntLit 2L), Lit (IntLit 3L))),
+                Lit (IntLit 7L) ) ),
         Lit (BoolLit false) )
   in
   let expected =
@@ -113,7 +113,7 @@ let test_parse_precedencia_y_unarios _ =
               name = "main";
               params = [];
               ret = [];
-              body = [ If (expected_cond, [ ShortDecl ("x", Lit (IntLit 1)) ], None) ];
+              body = [ If (expected_cond, [ ShortDecl ("x", Lit (IntLit 1L)) ], None) ];
             };
         ];
     }

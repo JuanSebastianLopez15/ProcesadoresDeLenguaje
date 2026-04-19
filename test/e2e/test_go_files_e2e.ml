@@ -154,7 +154,7 @@ let fixtures =
                   name = "sumarUno";
                   params = [ ("x", TInt) ];
                   ret = [ TInt ];
-                  body = [ Return [ BinOp (Add, Var "x", Lit (IntLit 1)) ] ];
+                  body = [ Return [ BinOp (Add, Var "x", Lit (IntLit 1L)) ] ];
                 };
               FuncDecl
                 {
@@ -162,15 +162,15 @@ let fixtures =
                   params = [];
                   ret = [];
                   body =
-                    [ ShortDecl ("contador", Lit (IntLit 1));
+                    [ ShortDecl ("contador", Lit (IntLit 1L));
                       ForCond
-                        ( BinOp (Leq, Var "contador", Lit (IntLit 3)),
+                        ( BinOp (Leq, Var "contador", Lit (IntLit 3L)),
                           [ ExprStmt
                               (MethodCall
                                  (Var "fmt", "Println", [ Var "contador" ]));
                             Assign
                               ( [ Var "contador" ],
-                                [ Call ("sumarUno", [ Var "contador" ]) ] );
+                                [ Call (Var "sumarUno", [ Var "contador" ]) ] );
                           ] );
                     ];
                 };
@@ -191,7 +191,7 @@ let fixtures =
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ If (Lit (IntLit 1), [], None) ];
+                  body = [ If (Lit (IntLit 1L), [], None) ];
                 };
             ];
         };
@@ -210,14 +210,14 @@ let fixtures =
                   name = "doble";
                   params = [ ("numero", TInt) ];
                   ret = [ TInt ];
-                  body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2)) ] ];
+                  body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2L)) ] ];
                 };
               FuncDecl
                 {
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ ShortDecl ("resultado", Call ("doble", [])) ];
+                  body = [ ShortDecl ("resultado", Call (Var "doble", [])) ];
                 };
             ];
         };
@@ -237,9 +237,9 @@ let fixtures =
                   params = [];
                   ret = [];
                   body =
-                    [ ShortDecl ("x", Lit (IntLit 0));
+                    [ ShortDecl ("x", Lit (IntLit 0L));
                       If
-                        ( BinOp (Eq, Var "x", Lit (IntLit 0)),
+                        ( BinOp (Eq, Var "x", Lit (IntLit 0L)),
                           [ ExprStmt
                               (MethodCall
                                  (Var "fmt", "Println", [ Lit (StringLit "ok") ])) ],
@@ -266,7 +266,7 @@ let fixtures =
                   name = "doble";
                   params = [ ("numero", TInt) ];
                   ret = [ TInt ];
-                  body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2)) ] ];
+                  body = [ Return [ BinOp (Mul, Var "numero", Lit (IntLit 2L)) ] ];
                 };
               FuncDecl
                 {
@@ -277,7 +277,7 @@ let fixtures =
                     [ Return
                         [ BinOp
                             ( Add,
-                              Call ("doble", [ Var "numero" ]),
+                              Call (Var "doble", [ Var "numero" ]),
                               Var "numero" ) ] ];
                 };
               FuncDecl
@@ -285,7 +285,7 @@ let fixtures =
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ ShortDecl ("resultado", Call ("triple", [ Lit (IntLit 3) ])) ];
+                  body = [ ShortDecl ("resultado", Call (Var "triple", [ Lit (IntLit 3L) ])) ];
                 };
             ];
         };
@@ -311,7 +311,7 @@ let fixtures =
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ ShortDecl ("x", Call ("malo", [])) ];
+                  body = [ ShortDecl ("x", Call (Var "malo", [])) ];
                 };
             ];
         };

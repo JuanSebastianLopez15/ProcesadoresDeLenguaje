@@ -14,7 +14,7 @@ type typ =
   | TName of string                 (* NUEVO: representa un tipo personalizado como "Resultado" *)
 
 type literal =
-  | IntLit of int
+  | IntLit of Int64.t
   | FloatLit of float
   | StringLit of string
   | BoolLit of bool
@@ -46,9 +46,10 @@ type expr =
   | Var of string
   | BinOp of binop * expr * expr
   | UnOp of unop * expr
-  | Call of string * expr list
+  | Call of expr * expr list
   | MethodCall of expr * string * expr list
   | Index of expr * expr
+  | Slice of expr * expr option * expr option * expr option
   | Selector of expr * string
   | StructLit of string * expr list  (* NUEVO: instanciar struct Resultado{num, clas} *)
   | SliceLit of typ * expr list      (* NUEVO: instanciar arreglo []int64{1, 2, 3} *)
@@ -56,7 +57,9 @@ type expr =
 
 type stmt =
   | Assign of expr list * expr list
+  | MultiAssign of expr list * expr list
   | ShortDecl of string * expr
+  | MultiShortDecl of string list * expr list
   | If of expr * stmt list * stmt list option
   | ForCond of expr * stmt list
   | ForRange of string * string * expr * stmt list

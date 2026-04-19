@@ -48,12 +48,14 @@ let token_to_string = function
   | MAP -> "MAP"
   | INTERFACE -> "INTERFACE"
   | CHAN -> "CHAN"
+  | MAKE -> "MAKE"
+  | NEW -> "NEW"
   | TRUE -> "TRUE"
   | FALSE -> "FALSE"
   | NIL -> "NIL"
   | IDENT s -> Printf.sprintf "IDENT(%s)" s
   | STRUCT_ID s -> Printf.sprintf "STRUCT_ID(%s)" s
-  | INTLIT n -> Printf.sprintf "INTLIT(%d)" n
+  | INTLIT n -> Printf.sprintf "INTLIT(%Ld)" n
   | FLOATLIT f -> Printf.sprintf "FLOATLIT(%g)" f
   | STRINGLIT s -> Printf.sprintf "STRINGLIT(%s)" s
   | ASSIGN -> "ASSIGN"
@@ -82,6 +84,18 @@ let token_to_string = function
   | BANG -> "BANG"
   | INC -> "INC"
   | DEC -> "DEC"
+  | PLUS_ASSIGN -> "PLUS_ASSIGN"
+  | MINUS_ASSIGN -> "MINUS_ASSIGN"
+  | STAR_ASSIGN -> "STAR_ASSIGN"
+  | SLASH_ASSIGN -> "SLASH_ASSIGN"
+  | MOD_ASSIGN -> "MOD_ASSIGN"
+  | AMP_ASSIGN -> "AMP_ASSIGN"
+  | PIPE_ASSIGN -> "PIPE_ASSIGN"
+  | CARET_ASSIGN -> "CARET_ASSIGN"
+  | SHL_ASSIGN -> "SHL_ASSIGN"
+  | SHR_ASSIGN -> "SHR_ASSIGN"
+  | AND_NOT -> "AND_NOT"
+  | AND_NOT_ASSIGN -> "AND_NOT_ASSIGN"
   | LPAREN -> "LPAREN"
   | RPAREN -> "RPAREN"
   | LBRACK -> "LBRACK"
@@ -140,7 +154,7 @@ let string_of_typ = function
   | TStruct _ -> "TStruct(...)"                  (* NUEVO *)
 
 let string_of_literal = function
-  | IntLit n -> Printf.sprintf "IntLit(%d)" n
+  | IntLit n -> Printf.sprintf "IntLit(%Ld)" n
   | FloatLit f -> Printf.sprintf "FloatLit(%f)" f
   | StringLit s -> Printf.sprintf "StringLit(%S)" s
   | BoolLit b -> Printf.sprintf "BoolLit(%b)" b
@@ -175,24 +189,28 @@ let rec string_of_expr = function
         (string_of_expr r)
   | UnOp (op, e) ->
       Printf.sprintf "UnOp(%s, %s)" (string_of_unop op) (string_of_expr e)
-  | Call (name, args) ->
-      Printf.sprintf "Call(%s, [%s])" name
+  | Call (e, args) ->
+      Printf.sprintf "Call(%s, [%s])" (string_of_expr e)
         (String.concat "; " (List.map string_of_expr args))
   | MethodCall (obj, name, args) ->
       Printf.sprintf "MethodCall(%s, %s, [%s])" (string_of_expr obj) name
         (String.concat "; " (List.map string_of_expr args))
   | Index (arr, idx) ->
       Printf.sprintf "Index(%s, %s)" (string_of_expr arr) (string_of_expr idx)
+  | Slice (arr, low, high, max) ->
+      let s_opt = function Some e -> string_of_expr e | None -> "" in
+      Printf.sprintf "Slice(%s, %s, %s, %s)" (string_of_expr arr) (s_opt low) (s_opt high) (s_opt max)
   | Selector (e, field) ->
       Printf.sprintf "Selector(%s, %s)" (string_of_expr e) field
-  | StructLit (name, args) ->                                   (* NUEVO *)
-      Printf.sprintf "StructLit(%s, [%s])" name
+  | StructLit (t_name, args) ->
+      Printf.sprintf "StructLit(%s, [%s])" t_name
         (String.concat "; " (List.map string_of_expr args))
   | SliceLit (t, args) ->                                       (* NUEVO *)
       Printf.sprintf "SliceLit(%s, [%s])" (string_of_typ t)
         (String.concat "; " (List.map string_of_expr args))
   | Cast (t, e) ->                                              (* NUEVO *)
       Printf.sprintf "Cast(%s, %s)" (string_of_typ t) (string_of_expr e)
+
 
 let rec string_of_stmt level = function
   | Assign (lhs, rhs) ->

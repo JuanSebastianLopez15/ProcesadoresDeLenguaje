@@ -37,9 +37,9 @@
          && s.[1] <> 'x' && s.[1] <> 'X'
          && s.[1] <> 'b' && s.[1] <> 'B'
          && s.[1] <> 'o' && s.[1] <> 'O'
-      then int_of_string ("0o" ^ String.sub s 1 (len - 1))
-      else int_of_string s
-    with _ -> 0
+      then Int64.of_string ("0o" ^ String.sub s 1 (len - 1))
+      else Int64.of_string s
+    with _ -> 0L
 
   let parse_float_literal s =
     try float_of_string (remove_underscores s) with _ -> 0.0
@@ -62,7 +62,7 @@ rule read = parse
   | "/*" { block_comment lexbuf; read lexbuf }
   | newline    {
       Lexing.new_line lexbuf;
-      if !last_token_can_end_stmt then emit SEMICOLON
+      if !last_token_can_end_stmt then (last_token_can_end_stmt := false; emit SEMICOLON)
       else read lexbuf
     }
   
@@ -83,6 +83,19 @@ rule read = parse
   | "range"    { emit RANGE }
   | "type"     { emit TYPE }
   | "struct"   { emit STRUCT }
+  | "make"     { emit MAKE }
+  | "new"      { emit NEW }
+  | "delete"   { emit DELETE }
+  | "real"     { emit REAL }
+  | "imag"     { emit IMAG }
+  | "complex"  { emit COMPLEX }
+  | "copy"     { emit COPY }
+  | "recover"  { emit RECOVER }
+  | "panic"    { emit PANIC }
+  | "append"   { emit APPEND }
+  | "cap"      { emit CAP }
+  | "len"      { emit LEN }
+  | "close"    { emit CLOSE }
   | "map"      { emit MAP }
   | "interface" { emit INTERFACE }
   | "chan"     { emit CHAN }
@@ -103,6 +116,18 @@ rule read = parse
   | "||"       { emit OR_OR }
   | "++"       { emit INC }
   | "--"       { emit DEC }
+  | "+="       { emit PLUS_ASSIGN }
+  | "-="       { emit MINUS_ASSIGN }
+  | "*="       { emit STAR_ASSIGN }
+  | "/="       { emit SLASH_ASSIGN }
+  | "%="       { emit MOD_ASSIGN }
+  | "&="       { emit AMP_ASSIGN }
+  | "|="       { emit PIPE_ASSIGN }
+  | "^="       { emit CARET_ASSIGN }
+  | "<<="      { emit SHL_ASSIGN }
+  | ">>="      { emit SHR_ASSIGN }
+  | "&^="      { emit AND_NOT_ASSIGN }
+  | "&^"       { emit AND_NOT }
   | "="        { emit ASSIGN }
   | ":"        { emit COLON }
   | "!"        { emit BANG }
@@ -126,9 +151,9 @@ rule read = parse
   | "."        { emit DOT }
   | ";"        { emit SEMICOLON }
 
-  | '`' { emit (STRINGLIT (raw_string (Buffer.create 32) lexbuf)) }
-  | '"' { emit (STRINGLIT (interp_string (Buffer.create 32) lexbuf)) }
-  | '\'' [^ '\n' '\r']+ '\'' { emit (INTLIT 0) }
+  | '`' { emit (STRINGLIT (raw_string (Buffer.create 1024) lexbuf)) }
+  | '"' { emit (STRINGLIT (interp_string (Buffer.create 1024) lexbuf)) }
+  | '\'' ( [^ '\\' '\''] | '\\' _ )+ '\'' { emit (INTLIT 0L) }
 
   | "0" ['x' 'X'] (hexdigit | '_')+ "." (hexdigit | '_')* ['p' 'P'] ['+' '-']? (digit | '_')+ "i" as n
       { emit (FLOATLIT (parse_float_literal (String.sub n 0 (String.length n - 1)))) }
@@ -142,7 +167,7 @@ rule read = parse
   | (hex_int | bin_int | oct_new | oct_old | dec_int) "i" as n
       {
         let base = String.sub n 0 (String.length n - 1) in
-        emit (FLOATLIT (float_of_int (parse_int_literal base)))
+        emit (FLOATLIT (Int64.to_float (parse_int_literal base)))
       }
   | hex_int as n { emit (INTLIT (parse_int_literal n)) }
   | bin_int as n { emit (INTLIT (parse_int_literal n)) }
@@ -150,7 +175,8 @@ rule read = parse
   | oct_old as n { emit (INTLIT (parse_int_literal n)) }
   | dec_int as n { emit (INTLIT (parse_int_literal n)) }
 
-  | ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']* as id { emit (IDENT id) }
+  | ['a'-'z' 'A'-'Z' '_' '\128'-'\255'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\128'-'\255']* as id 
+      { if id.[0] >= 'A' && id.[0] <= 'Z' then emit (STRUCT_ID id) else emit (IDENT id) }
   
   | eof {
       last_token_can_end_stmt := false;

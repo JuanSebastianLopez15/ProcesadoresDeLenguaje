@@ -30,10 +30,15 @@ let rec collect_mutable_in_expr = function
   | Lit _ | Var _ -> []
   | BinOp (_, l, r) -> collect_mutable_in_expr l @ collect_mutable_in_expr r
   | UnOp (_, e) -> collect_mutable_in_expr e
-  | Call (_, args) -> List.concat_map collect_mutable_in_expr args
+  | Call (e, args) -> collect_mutable_in_expr e @ List.concat_map collect_mutable_in_expr args
   | MethodCall (obj, _, args) ->
       collect_mutable_in_expr obj @ List.concat_map collect_mutable_in_expr args
   | Index (arr, idx) -> collect_mutable_in_expr arr @ collect_mutable_in_expr idx
+  | Slice (arr, low, high, max) ->
+      collect_mutable_in_expr arr @
+      (match low with Some e -> collect_mutable_in_expr e | None -> []) @
+      (match high with Some e -> collect_mutable_in_expr e | None -> []) @
+      (match max with Some e -> collect_mutable_in_expr e | None -> [])
   | Selector (e, _) -> collect_mutable_in_expr e
   | StructLit (_, args) -> List.concat_map collect_mutable_in_expr args
   | SliceLit (_, args) -> List.concat_map collect_mutable_in_expr args
@@ -45,7 +50,13 @@ let rec collect_mutable_in_stmt = function
       let rhs_vars = List.concat_map collect_mutable_in_expr rhs in
       let mutable_names = List.filter_map (function Var x -> Some x | _ -> None) lhs in
       mutable_names @ lhs_vars @ rhs_vars
+  | MultiAssign (lhs, rhs) ->
+      let lhs_vars = List.concat_map collect_mutable_in_expr lhs in
+      let rhs_vars = List.concat_map collect_mutable_in_expr rhs in
+      let mutable_names = List.filter_map (function Var x -> Some x | _ -> None) lhs in
+      mutable_names @ lhs_vars @ rhs_vars
   | ShortDecl (_, e) -> collect_mutable_in_expr e
+  | MultiShortDecl (_, exprs) -> List.concat_map collect_mutable_in_expr exprs
   | If (cond, then_b, else_opt) ->
       let cond_vars = collect_mutable_in_expr cond in
       let then_vars = List.concat_map collect_mutable_in_stmt then_b in
@@ -64,7 +75,10 @@ let collect_mutable_in_func (fd: func_decl) : string list =
   let assign_targets = List.concat_map (function
       | Assign (lhs, _) ->
           List.filter_map (function Var x -> Some x | _ -> None) lhs
+      | MultiAssign (lhs, _) ->
+          List.filter_map (function Var x -> Some x | _ -> None) lhs
       | ShortDecl (x, _) -> [x]
+      | MultiShortDecl (names, _) -> names
       | _ -> []) stmts
   in
   let inc_dec_targets = List.concat_map (function
@@ -125,7 +139,7 @@ let escape_ocaml_string s =
 (* ---------------------------------------------------------------------- *)
 
 let rec expr_to_ocaml ctx = function
-  | Lit (IntLit n) -> string_of_int n
+  | Lit (IntLit n) -> Int64.to_string n
   | Lit (FloatLit f) -> string_of_float f
   | Lit (StringLit s) -> escape_ocaml_string s
   | Lit (BoolLit b) -> string_of_bool b
@@ -136,15 +150,19 @@ let rec expr_to_ocaml ctx = function
       Printf.sprintf "(%s %s %s)" (expr_to_ocaml ctx l) (string_of_binop op) (expr_to_ocaml ctx r)
   | UnOp (Not, e) -> Printf.sprintf "(not %s)" (expr_to_ocaml ctx e)
   | UnOp (Neg, e) -> Printf.sprintf "(-. %s)" (expr_to_ocaml ctx e)
-  | UnOp (Inc, e) -> (match e with Var x -> Printf.sprintf "%s := !%s + 1" x x | _ -> failwith "inc")
-  | UnOp (Dec, e) -> (match e with Var x -> Printf.sprintf "%s := !%s - 1" x x | _ -> failwith "dec")
+  | UnOp (Inc, e) -> (match e with Var x -> Printf.sprintf "%s := Int64.add !%s 1L" x x | _ -> failwith "inc")
+  | UnOp (Dec, e) -> (match e with Var x -> Printf.sprintf "%s := Int64.sub !%s 1L" x x | _ -> failwith "dec")
   
-  | Call ("len", [arr]) -> Printf.sprintf "Array.length %s" (expr_to_ocaml ctx arr)
-  | Call ("append", [arr; elem]) -> Printf.sprintf "Array.append %s [|%s|]" (expr_to_ocaml ctx arr) (expr_to_ocaml ctx elem)
+  | Call (Var "len", [arr]) -> Printf.sprintf "Array.length %s" (expr_to_ocaml ctx arr)
+  | Call (Var "append", [arr; elem]) -> Printf.sprintf "Array.append %s [|%s|]" (expr_to_ocaml ctx arr) (expr_to_ocaml ctx elem)
   
-  | Call (name, args) ->
+  | Call (Var name, args) ->
       let args_str = String.concat " " (List.map (expr_to_ocaml ctx) args) in
       Printf.sprintf "%s %s" name args_str
+  | Call (e, args) ->
+      let e_str = expr_to_ocaml ctx e in
+      let args_str = String.concat " " (List.map (expr_to_ocaml ctx) args) in
+      Printf.sprintf "(%s) %s" e_str args_str
   | MethodCall (obj, method_name, args) ->
       let obj_str = expr_to_ocaml ctx obj in
       if obj_str = "fmt" && (method_name = "Println" || method_name = "Printf") then
@@ -153,6 +171,7 @@ let rec expr_to_ocaml ctx = function
         let args_str = String.concat " " (List.map (expr_to_ocaml ctx) args) in
         Printf.sprintf "%s.%s %s" obj_str method_name args_str
   | Index (arr, idx) -> Printf.sprintf "%s.(%s)" (expr_to_ocaml ctx arr) (expr_to_ocaml ctx idx)
+  | Slice (arr, _, _, _) -> Printf.sprintf "Array.sub %s 0 (Array.length %s)" (expr_to_ocaml ctx arr) (expr_to_ocaml ctx arr) (* Simple approximation *)
   | Selector (e, field) -> Printf.sprintf "%s.%s" (expr_to_ocaml ctx e) field
   
   | SliceLit (_, args) -> 
@@ -194,7 +213,8 @@ let rec infer_expr_type ctx = function
       | _ -> TAny
       end
   | UnOp ((Inc|Dec), _) -> TInt
-  | Call (name, _) -> lookup_func_ret_type ctx name
+  | Call (Var name, _) -> lookup_func_ret_type ctx name
+  | Call (_, _) -> TAny
   | MethodCall (obj, method_name, _) ->
       if expr_to_ocaml ctx obj = "fmt" && List.mem method_name ["Println"; "Printf"; "Print"] then TVoid
       else TAny
@@ -203,6 +223,7 @@ let rec infer_expr_type ctx = function
       | TSlice t -> t
       | _ -> TAny
       end
+  | Slice (arr, _, _, _) -> infer_expr_type ctx arr
   | Selector (_, _) -> TAny
   | StructLit (name, _) -> TName name
   | SliceLit (t, _) -> TSlice t
@@ -214,11 +235,11 @@ let string_of_expr_string ctx expr =
   | TString -> expr_str
   | TBool -> Printf.sprintf "string_of_bool (%s)" expr_str
   | TFloat64 -> Printf.sprintf "string_of_float (%s)" expr_str
-  | TInt -> Printf.sprintf "string_of_int (%s)" expr_str
+  | TInt -> Printf.sprintf "Int64.to_string (%s)" expr_str
   | _ -> expr_str
 
 let expr_to_print_string ctx = function
-  | Lit (IntLit n) -> string_of_int n
+  | Lit (IntLit n) -> Int64.to_string n
   | Lit (FloatLit f) -> string_of_float f
   | Lit (StringLit s) -> escape_ocaml_string s
   | Lit (BoolLit b) -> string_of_bool b
@@ -229,27 +250,43 @@ let expr_to_print_string ctx = function
       | TString -> base
       | TBool -> Printf.sprintf "string_of_bool %s" base
       | TFloat64 -> Printf.sprintf "string_of_float %s" base
-      | TInt -> Printf.sprintf "string_of_int %s" base
+      | TInt -> Printf.sprintf "Int64.to_string %s" base
       | _ -> base
       end
   | expr ->
       string_of_expr_string ctx expr
+
 
 (* ---------------------------------------------------------------------- *)
 (* Expresiones → OCaml                                                   *)
 (* ---------------------------------------------------------------------- *)
 
 let rec stmt_to_ocaml ctx = function
-  | Assign (lhs, rhs) ->
-      let lhs_str = List.map (expr_to_ocaml ctx) lhs in
-      let rhs_str = List.map (expr_to_ocaml ctx) rhs in
-      (match lhs_str, rhs_str with [l], [r] -> Printf.sprintf "%s = %s" l r | _ -> failwith "multi-assign")
+  | Assign (lhss, rhss) ->
+      let lhs_str = List.map (expr_to_ocaml ctx) lhss in
+      let rhs_str = List.map (expr_to_ocaml ctx) rhss in
+      if List.length lhs_str = List.length rhs_str then
+        List.map2 (fun l r -> Printf.sprintf "%s = %s" l r) lhs_str rhs_str |> String.concat "; "
+      else if List.length rhs_str = 1 then
+        Printf.sprintf "let (%s) = %s in %s" (String.concat ", " lhs_str) (List.hd rhs_str)
+          (List.map (fun l -> Printf.sprintf "%s := %s" l l) lhs_str |> String.concat "; ")
+      else "()"
   | ShortDecl (name, expr) ->
       let init = expr_to_ocaml ctx expr in
       if List.mem name ctx.mutable_vars then
         Printf.sprintf "let %s = ref %s in" name init
       else
         Printf.sprintf "let %s = %s in" name init
+  | MultiShortDecl (names, exprs) ->
+      let exprs_str = List.map (expr_to_ocaml ctx) exprs in
+      if List.length names = List.length exprs_str then
+        List.map2 (fun n e -> 
+          if List.mem n ctx.mutable_vars then Printf.sprintf "let %s = ref %s in" n e
+          else Printf.sprintf "let %s = %s in" n e
+        ) names exprs_str |> String.concat " "
+      else if List.length exprs_str = 1 then
+        Printf.sprintf "let (%s) = %s in" (String.concat ", " names) (List.hd exprs_str)
+      else "()"
   | If (cond, then_b, else_opt) ->
       let cond_str = expr_to_ocaml ctx cond in
       let then_block = block_to_ocaml (with_indent ctx) then_b in
@@ -318,7 +355,26 @@ and block_to_ocaml ctx = function
           let decl = if is_mutable then Printf.sprintf "let %s = ref %s in" name init
                      else Printf.sprintf "let %s = %s in" name init in
           Printf.sprintf "\n%s (%s)" decl (block_to_ocaml new_ctx rest)
-      | _ ->
+      | MultiShortDecl (names, exprs) ->
+          let exprs_str = List.map (expr_to_ocaml ctx) exprs in
+          let is_tuple = List.length names > 1 && List.length exprs_str = 1 in
+          let new_ctx =
+            List.fold_left (fun c n ->
+              let typed_c = { c with var_types = (n, TAny) :: c.var_types } in
+              if List.mem n ctx.mutable_vars then { typed_c with mutable_vars = n :: typed_c.mutable_vars }
+              else typed_c
+            ) ctx names
+          in
+          let decl =
+             if is_tuple then
+                Printf.sprintf "let (%s) = %s in" (String.concat ", " names) (List.hd exprs_str)
+             else
+                List.map2 (fun n e ->
+                  if List.mem n ctx.mutable_vars then Printf.sprintf "let %s = ref %s in" n e
+                  else Printf.sprintf "let %s = %s in" n e
+                ) names exprs_str |> String.concat " "
+          in
+          Printf.sprintf "\n%s (%s)" decl (block_to_ocaml new_ctx rest)      | _ ->
           let first = stmt_to_ocaml ctx stmt in
           let inner = block_to_ocaml ctx rest in
           Printf.sprintf "\n%s;\n%s" first (String.sub inner 1 (String.length inner - 1))
@@ -359,6 +415,7 @@ let decl_to_ocaml ctx = function
 (* ---------------------------------------------------------------------- *)
 
 let program_to_ocaml (prog: program) : string =
+  Printf.printf "Codegen: Procesando %d declaraciones\n" (List.length prog.decls);
   let func_ret_types =
     List.fold_left (fun acc -> function
       | FuncDecl { name; ret = [t]; _ } -> (name, t) :: acc
