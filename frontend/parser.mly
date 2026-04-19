@@ -1,25 +1,37 @@
 %{
 open Lib.Ast
 
+let numeric_named_types =
+  [ "int8"; "int16"; "int32"; "int64";
+    "uint"; "uint8"; "uint16"; "uint32"; "uint64"; "uintptr";
+    "byte"; "rune"; "float32"; "float64";
+    "complex64"; "complex128" ]
+
 let parse_type = function
-	| "int" | "int64" | "rune" | "byte" -> TInt
+	| "int" -> TInt
+	| "rune" | "byte" -> TInt
 	| "string" -> TString
 	| "bool" -> TBool
 	| "float64" | "float32" -> TFloat64
 	| "any" -> TAny
+	| name when List.mem name numeric_named_types -> TName name
 	| name -> TName name
 %}
 
 /* DEFINICIÓN DE TOKENS (El diccionario que faltaba) */
 %token PACKAGE IMPORT FUNC FOR IF ELSE RETURN VAR RANGE
-%token TYPE STRUCT
+%token TYPE STRUCT CONST DEFER GO SWITCH CASE DEFAULT
+%token MAP INTERFACE CHAN
 %token TRUE FALSE NIL
 %token <string> IDENT
 %token <string> STRUCT_ID
 %token <int> INTLIT
+%token <float> FLOATLIT
 %token <string> STRINGLIT
 %token ASSIGN DECL_ASSIGN
+%token COLON ELLIPSIS
 %token PLUS MINUS STAR SLASH MOD
+%token AMP PIPE CARET SHL SHR ARROW
 %token EQ_EQ NOT_EQ LT GT LTE GTE
 %token AND_AND OR_OR
 %token BANG
@@ -36,8 +48,11 @@ let parse_type = function
 %left OR_OR
 %left AND_AND
 %left EQ_EQ NOT_EQ LT GT LTE GTE
+%left PIPE CARET AMP
+%left SHL SHR
 %left PLUS MINUS
 %left STAR SLASH MOD
+%nonassoc INC DEC
 %nonassoc BANG
 %left DOT LBRACK LPAREN
 
@@ -71,33 +86,168 @@ import_paths:
 
 decls:
 	|                         { [] }
-	| d=decl ds=decls_tail    { d :: ds }
+	| d=decl ds=decls_tail    { d @ ds }
 
 decls_tail:
 	|                       { [] }
 	| SEMICOLON ds=decls    { ds }
 
 decl:
-	| f=func_decl { FuncDecl f }
-	| v=var_decl { v }
-	| TYPE name=STRUCT_ID STRUCT LBRACE fields=struct_fields RBRACE { TypeDecl (name, TStruct fields) }
+	| f=func_decl { [FuncDecl f] }
+	| v=var_decl { [v] }
+	| c=const_decl { [c] }
+	| TYPE name=any_ident type_rhs=tdecl_rhs { [TypeDecl (name, type_rhs)] }
+	| VAR LPAREN vars=var_specs RPAREN { vars }
+	| CONST LPAREN consts=const_specs RPAREN { consts }
+
+tdecl_rhs:
+	| STRUCT LBRACE fields=struct_fields RBRACE { TStruct fields }
+	| FUNC LPAREN ps=func_sig_opaque RPAREN ret=func_ret_opaque { ignore ps; ignore ret; TAny }
+	| ASSIGN t=go_type { t }
+	| t=go_type { t }
+
+func_sig_opaque:
+	|                          { () }
+	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
+
+func_ret_opaque:
+	|                          { () }
+	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
 
 struct_fields:
 	|                                      { [] }
-	| f=struct_field fs=struct_fields_tail { f :: fs }
+	| f=struct_field fs=struct_fields_tail { f @ fs }
 
 struct_fields_tail:
 	|                            { [] }
 	| SEMICOLON fs=struct_fields { fs }
 
 struct_field:
-	| name=any_ident t=go_type { (name, t) }
+	| names=ident_list t=go_type tag=struct_tag_opt
+			{ ignore tag; List.map (fun n -> (n, t)) names }
+	| t=go_type tag=struct_tag_opt
+			{ ignore tag; [ ("_embedded", t) ] }
+
+struct_tag_opt:
+	|           { () }
+	| STRINGLIT { () }
+
+var_specs:
+	|                                   { [] }
+	| v=var_spec vs=var_specs_tail      { v :: vs }
+
+var_specs_tail:
+	|                            { [] }
+	| SEMICOLON vs=var_specs     { vs }
+
+var_spec:
+	| VAR name=any_ident typ=go_type init=typed_var_init_opt
+			{ VarDecl (name, Some typ, init) }
+	| VAR name=any_ident ASSIGN value=expr
+			{ VarDecl (name, None, Some value) }
+	| name=any_ident typ=go_type ASSIGN ignored_rhs
+			{ VarDecl (name, Some typ, None) }
+	| name=any_ident ASSIGN ignored_rhs
+			{ VarDecl (name, Some TAny, None) }
+	| name=any_ident typ=go_type
+			{ VarDecl (name, Some typ, None) }
+
+const_specs:
+	|                                      { [] }
+	| c=const_spec cs=const_specs_tail     { c :: cs }
+
+const_specs_tail:
+	|                             { [] }
+	| SEMICOLON cs=const_specs    { cs }
+
+const_spec:
+	| name=any_ident ct=const_tail
+			{ VarDecl (name, Some (match ct with Some t -> t | None -> TAny), None) }
+
+const_tail:
+	| typ=go_type const_init_opt { Some typ }
+	| const_init_opt             { None }
+
+const_decl:
+	| CONST name=any_ident ct=const_tail
+			{ VarDecl (name, Some (match ct with Some t -> t | None -> TAny), None) }
 
 var_decl:
 	| VAR name=any_ident typ=go_type init=typed_var_init_opt
 			{ VarDecl (name, Some typ, init) }
 	| VAR name=any_ident ASSIGN value=expr
 			{ VarDecl (name, None, Some value) }
+
+const_init_opt:
+	|                    { () }
+	| ASSIGN ignored_rhs { () }
+
+ignored_rhs:
+	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
+
+rhs_tokens:
+	|                            { () }
+	| tok=rhs_token rest=rhs_tokens { ignore tok; ignore rest }
+
+rhs_token:
+	| id=IDENT { ignore id }
+	| id=STRUCT_ID { ignore id }
+	| n=INTLIT { ignore n }
+	| f=FLOATLIT { ignore f }
+	| s=STRINGLIT { ignore s }
+	| TRUE { () }
+	| FALSE { () }
+	| NIL { () }
+	| ASSIGN { () }
+	| DECL_ASSIGN { () }
+	| COLON { () }
+	| ELLIPSIS { () }
+	| PLUS { () }
+	| MINUS { () }
+	| STAR { () }
+	| SLASH { () }
+	| MOD { () }
+	| AMP { () }
+	| PIPE { () }
+	| CARET { () }
+	| SHL { () }
+	| SHR { () }
+	| ARROW { () }
+	| EQ_EQ { () }
+	| NOT_EQ { () }
+	| LT { () }
+	| GT { () }
+	| LTE { () }
+	| GTE { () }
+	| AND_AND { () }
+	| OR_OR { () }
+	| BANG { () }
+	| INC { () }
+	| DEC { () }
+	| COMMA { () }
+	| SEMICOLON { () }
+	| DOT { () }
+	| MAP { () }
+	| INTERFACE { () }
+	| CHAN { () }
+	| FUNC { () }
+	| STRUCT { () }
+	| RANGE { () }
+	| VAR { () }
+	| CONST { () }
+	| TYPE { () }
+	| IF { () }
+	| ELSE { () }
+	| FOR { () }
+	| RETURN { () }
+	| DEFER { () }
+	| GO { () }
+	| SWITCH { () }
+	| CASE { () }
+	| DEFAULT { () }
+	| LPAREN inner=rhs_tokens RPAREN { ignore inner }
+	| LBRACK inner=rhs_tokens RBRACK { ignore inner }
+	| LBRACE inner=rhs_tokens RBRACE { ignore inner }
 
 typed_var_init_opt:
 	|                    { None }
@@ -106,6 +256,11 @@ typed_var_init_opt:
 func_decl:
 	| FUNC name=any_ident LPAREN params=params_opt RPAREN ret=ret_opt body=block
 			{ { name; params; ret; body; } }
+	| FUNC LPAREN rname=any_ident rtyp=go_type RPAREN name=any_ident LPAREN params=params_opt RPAREN ret=ret_opt body=opaque_block
+			{ ignore rname; ignore rtyp; ignore body; { name; params; ret; body = []; } }
+
+opaque_block:
+	| LBRACE body=rhs_tokens RBRACE { ignore body; [] }
 
 params_opt:
 	|               { [] }
@@ -124,13 +279,31 @@ ret_opt:
 	| LPAREN ts=go_types RPAREN { ts }
 
 go_types:
-	| t=go_type                  { [ t ] }
-	| t=go_type COMMA ts=go_types { t :: ts }
+	| t=go_type_item                     { [ t ] }
+	| t=go_type_item COMMA ts=go_types   { t :: ts }
+
+go_type_item:
+	| t=go_type { t }
+	| names=ident_list t=go_type { ignore names; t }
+
+ident_list:
+	| id=any_ident { [id] }
+	| id=any_ident COMMA ids=ident_list { id :: ids }
 
 go_type:
 	| t=any_ident { parse_type t }
+	| STRUCT LBRACE fields=struct_fields RBRACE { TStruct fields }
 	| LBRACK RBRACK t=go_type { TSlice t }
-
+	| LBRACK INTLIT RBRACK t=go_type { TSlice t }
+	| LBRACK ELLIPSIS RBRACK t=go_type { TSlice t }
+	| MAP LBRACK k=go_type RBRACK v=go_type { TMap (k, v) }
+	| STAR t=go_type { ignore t; TAny }
+	| CHAN t=go_type { ignore t; TAny }
+	| CHAN ARROW t=go_type { ignore t; TAny }
+	| ARROW CHAN t=go_type { ignore t; TAny }
+	| INTERFACE LBRACE RBRACE { TAny }
+	| INTERFACE LBRACE body=rhs_tokens RBRACE { ignore body; TAny }
+	| FUNC LPAREN ps=func_sig_opaque RPAREN ret=func_ret_opaque { ignore ps; ignore ret; TAny }
 block:
 	| LBRACE stmts=stmts RBRACE { stmts }
 
@@ -161,12 +334,31 @@ stmt:
 			{ ExprStmt (UnOp (Inc, Var name)) }
 	| name=any_ident DEC
 			{ ExprStmt (UnOp (Dec, Var name)) }
+	| e=expr INC
+			{ ExprStmt (UnOp (Inc, e)) }
+	| e=expr DEC
+			{ ExprStmt (UnOp (Dec, e)) }
+	| DEFER e=expr { Defer e }
+	| GO e=expr { Go e }
+	| VAR name=any_ident _typ=go_type init=typed_var_init_opt
+			{ (match init with Some e -> ShortDecl (name, e) | None -> ShortDecl (name, Lit NilLit)) }
+	| VAR name=any_ident ASSIGN value=expr
+			{ ShortDecl (name, value) }
+	| CONST name=any_ident ct=const_tail
+			{ ignore ct; ShortDecl (name, Lit NilLit) }
 	| e=expr { ExprStmt e }
 
 expr:
 	| e=primary             { e }
+	| e=expr INC %prec INC  { UnOp (Inc, e) }
+	| e=expr DEC %prec DEC  { UnOp (Dec, e) }
 	| l=expr OR_OR r=expr   { BinOp (Or, l, r) }
 	| l=expr AND_AND r=expr { BinOp (And, l, r) }
+	| l=expr PIPE r=expr    { BinOp (Add, l, r) }
+	| l=expr CARET r=expr   { BinOp (Sub, l, r) }
+	| l=expr AMP r=expr     { BinOp (Mul, l, r) }
+	| l=expr SHL r=expr     { BinOp (Mul, l, r) }
+	| l=expr SHR r=expr     { BinOp (Div, l, r) }
 	| l=expr EQ_EQ r=expr   { BinOp (Eq, l, r) }
 	| l=expr NOT_EQ r=expr  { BinOp (Neq, l, r) }
 	| l=expr LT r=expr      { BinOp (Lt, l, r) }
@@ -183,6 +375,7 @@ expr:
 
 primary:
 	| n=INTLIT        { Lit (IntLit n) }
+	| f=FLOATLIT      { Lit (FloatLit f) }
 	| s=STRINGLIT     { Lit (StringLit s) }
 	| TRUE            { Lit (BoolLit true) }
 	| FALSE           { Lit (BoolLit false) }

@@ -36,23 +36,41 @@ let token_to_string = function
   | ELSE -> "ELSE"
   | RETURN -> "RETURN"
   | VAR -> "VAR"
+  | CONST -> "CONST"
+  | DEFER -> "DEFER"
+  | GO -> "GO"
+  | SWITCH -> "SWITCH"
+  | CASE -> "CASE"
+  | DEFAULT -> "DEFAULT"
   | RANGE -> "RANGE"
-  | TYPE -> "TYPE"        (* NUEVO *)
-  | STRUCT -> "STRUCT"    (* NUEVO *)
+  | TYPE -> "TYPE"
+  | STRUCT -> "STRUCT"
+  | MAP -> "MAP"
+  | INTERFACE -> "INTERFACE"
+  | CHAN -> "CHAN"
   | TRUE -> "TRUE"
   | FALSE -> "FALSE"
   | NIL -> "NIL"
   | IDENT s -> Printf.sprintf "IDENT(%s)" s
   | STRUCT_ID s -> Printf.sprintf "STRUCT_ID(%s)" s
   | INTLIT n -> Printf.sprintf "INTLIT(%d)" n
+  | FLOATLIT f -> Printf.sprintf "FLOATLIT(%g)" f
   | STRINGLIT s -> Printf.sprintf "STRINGLIT(%s)" s
   | ASSIGN -> "ASSIGN"
   | DECL_ASSIGN -> "DECL_ASSIGN"
+  | COLON -> "COLON"
+  | ELLIPSIS -> "ELLIPSIS"
   | PLUS -> "PLUS"
   | MINUS -> "MINUS"
   | STAR -> "STAR"
   | SLASH -> "SLASH"
   | MOD -> "MOD"
+  | AMP -> "AMP"
+  | PIPE -> "PIPE"
+  | CARET -> "CARET"
+  | SHL -> "SHL"
+  | SHR -> "SHR"
+  | ARROW -> "ARROW"
   | EQ_EQ -> "EQ_EQ"
   | NOT_EQ -> "NOT_EQ"
   | LT -> "LT"

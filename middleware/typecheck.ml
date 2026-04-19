@@ -10,6 +10,16 @@ type error =
     | VoidUsedAsValue of string
 exception TypeError of error
 
+let go_numeric_named_types =
+  [ "int8"; "int16"; "int32"; "int64";
+    "uint"; "uint8"; "uint16"; "uint32"; "uint64"; "uintptr";
+    "float32"; "float64"; "complex64"; "complex128"; "byte"; "rune" ]
+
+let is_numeric_type = function
+  | TInt | TFloat64 -> true
+  | TName n -> List.mem n go_numeric_named_types
+  | _ -> false
+
 let rec pp_typ = function
   | TInt      -> "int"
   | TFloat64 -> "float64"
@@ -43,6 +53,9 @@ let rec types_compatible t1 t2 =
   | TSlice t1', TSlice t2' -> types_compatible t1' t2'
   (* Alias comunes en Go *)
   | TInt, TName "int64" | TName "int64", TInt -> true
+  | TFloat64, TName "float32" | TName "float32", TFloat64 -> true
+  | TFloat64, TName "float64" | TName "float64", TFloat64 -> true
+  | TName n1, TName n2 when List.mem n1 go_numeric_named_types && List.mem n2 go_numeric_named_types -> true
   | _ -> false
 
 let expect_type ~context expected got =
@@ -75,7 +88,7 @@ let rec check_expr env = function
       let tr = check_expr env r in
       expect_type ~context:"operación aritmética" tl tr;
       (match tl with
-       | TInt | TFloat64 | TAny | TName "int64" -> tl
+       | _ when is_numeric_type tl || tl = TAny -> tl
        | _ -> raise (TypeError (TypeMismatch
            { expected = TInt; got = tl; context = "operación aritmética" })))
 
@@ -95,53 +108,68 @@ let rec check_expr env = function
       TBool
   | UnOp (Neg, e) ->
       let t = check_expr env e in
-      (match t with TInt | TFloat64 | TAny | TName "int64" -> t
+      (match t with _ when is_numeric_type t || t = TAny -> t
        | _ -> raise (TypeError (TypeMismatch
            { expected = TInt; got = t; context = "negación" })))
 
   | UnOp ((Inc|Dec), e) ->
-      expect_type ~context:"inc/dec" TInt (check_expr env e); TInt
+      let t = check_expr env e in
+      if is_numeric_type t || t = TAny then TInt
+      else raise (TypeError (TypeMismatch { expected = TInt; got = t; context = "inc/dec" }))
 
   (* --- MANEJO DE LLAMADAS Y CONVERSIONES (CASTS) --- *)
   | Call (name, args) ->
-      (match Env.lookup name env with
-       | Some (TFunc (param_types, ret_types)) ->
-           let n_expected = List.length param_types
-           and n_got      = List.length args in
-           if n_expected <> n_got
-           then raise (TypeError (WrongArgCount
-               { func_name = name; expected = n_expected; got = n_got }));
-           List.iter2 (fun expected_t arg ->
-             let got_t = check_expr env arg in
-             reject_void ~context:("argumento de " ^ name) got_t;
-             expect_type ~context:("argumento de " ^ name) expected_t got_t
-           ) param_types args;
-           (match ret_types with
-            | []  -> TVoid | [t] -> t | ts  -> TFunc ([], ts))
-       
-       (* Caso especial: len, append y conversiones de tipo *)
-       | None -> 
-           (match name, args with
-            | "len", [arg] -> 
-                let t = check_expr env arg in
-                if types_compatible (TSlice TAny) t || t = TString then TInt
-                else raise (TypeError (TypeMismatch {expected = TSlice TAny; got = t; context = "len"}))
-            | "append", [slice; elem] ->
-                let ts = check_expr env slice in
-                let te = check_expr env elem in
-                (match ts with TSlice ti -> expect_type ~context:"append" ti te; ts | _ -> ts)
-            (* TRATAR INT64 / FLOAT64 COMO CONVERSIONES *)
-            | ("int64" | "int" | "float64" | "string"), [arg] ->
-                let _ = check_expr env arg in 
-                if name = "int64" then TName "int64"
-                else if name = "float64" then TFloat64
-                else if name = "string" then TString
-                else TInt
-            | _ -> raise (TypeError (UndeclaredFunc name)))
-       | Some _ -> raise (TypeError (NotCallable name)))
+      (match name, args with
+       | "len", [arg] ->
+         let t = check_expr env arg in
+         if types_compatible (TSlice TAny) t || t = TString || types_compatible (TMap (TAny, TAny)) t then TInt
+         else raise (TypeError (TypeMismatch { expected = TSlice TAny; got = t; context = "len" }))
+       | "cap", [arg] ->
+         let t = check_expr env arg in
+         if types_compatible (TSlice TAny) t || t = TString || t = TAny then TInt
+         else raise (TypeError (TypeMismatch { expected = TSlice TAny; got = t; context = "cap" }))
+       | "make", _ -> TAny
+       | "new", [_] -> TAny
+       | "append", [slice; elem] ->
+         let ts = check_expr env slice in
+         let te = check_expr env elem in
+         (match ts with TSlice ti -> expect_type ~context:"append" ti te; ts | _ -> ts)
+       | "copy", [_; _] -> TInt
+       | "delete", [_; _] -> TVoid
+       | "close", [_] -> TVoid
+       | "complex", [_; _] -> TName "complex128"
+       | "real", [_] -> TFloat64
+       | "imag", [_] -> TFloat64
+       | "recover", [] -> TAny
+       | "panic", [_] -> TVoid
+       | ("int64" | "int" | "float64" | "string"), [arg] ->
+         let _ = check_expr env arg in
+         if name = "int64" then TName "int64"
+         else if name = "float64" then TFloat64
+         else if name = "string" then TString
+         else TInt
+       | _ ->
+         (match Env.lookup name env with
+        | Some (TFunc (param_types, ret_types)) ->
+          let n_expected = List.length param_types
+          and n_got = List.length args in
+          if n_expected <> n_got
+          then raise (TypeError (WrongArgCount { func_name = name; expected = n_expected; got = n_got }));
+          List.iter2 (fun expected_t arg ->
+            let got_t = check_expr env arg in
+            reject_void ~context:("argumento de " ^ name) got_t;
+            expect_type ~context:("argumento de " ^ name) expected_t got_t
+          ) param_types args;
+          (match ret_types with
+           | [] -> TVoid
+           | [t] -> t
+           | ts -> TFunc ([], ts))
+        | Some _ -> raise (TypeError (NotCallable name))
+        | None -> raise (TypeError (UndeclaredFunc name))))
 
   | MethodCall (Var "fmt", ("Println"|"Printf"|"Print"), _) -> TVoid
-  | MethodCall (obj, _, _) -> let _ = check_expr env obj in TVoid 
+        | MethodCall (Var "fmt", "Errorf", _) -> TAny
+        | MethodCall (obj, _, _) -> let _ = check_expr env obj in TAny 
 
   | Index (arr, idx) ->
       expect_type ~context:"índice" TInt (check_expr env idx);

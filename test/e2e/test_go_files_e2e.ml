@@ -102,7 +102,7 @@ let run_fixture base_dir fx _ =
   in
 
   Report.print_summary ~file_name:fx.file_name ~lexer_outcome
-    ~parser_outcome:parser_report_outcome ~typecheck_outcome;
+    ~parser_outcome:parser_report_outcome ~typecheck_outcome ();
 
   let tokens =
     match lexer_outcome with

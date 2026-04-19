@@ -16,6 +16,7 @@ opam exec -- dune build
 opam exec -- dune runtest
 opam exec -- dune exec ./test/e2e/run_sufrimiento_e2e.exe
 opam exec -- dune exec ./test/e2e/test_go_files_e2e.exe
+opam exec -- dune exec ./test/e2e/test_xtreme_files_e2e.exe
 ```
 
 ## Uso del traductor Go → OCaml:
@@ -90,6 +91,11 @@ El flujo implementado hoy conecta frontend, middleware y codegen con parser func
 	- Recorre archivos .txt en Source Code/tests.
 	- Ejecuta pipeline completo lexer -> parser -> typecheck y compara con resultados esperados.
 	- Imprime resumen por archivo con test/e2e/e2e_report.ml.
+- Pruebas xtreme obligatorias: test/e2e/test_xtreme_files_e2e.ml
+	- Recorre dinamicamente Source Code/xtreme_tests y ejecuta cada archivo completo.
+	- Ejecuta pipeline completo lexer -> parser -> typecheck -> codegen por archivo.
+	- Es criterio bloqueante: si un archivo xtreme falla, falla dune runtest.
+	- Nuevos archivos .go/.txt en xtreme_tests se incorporan automaticamente en la siguiente corrida.
 
 ## Estado actual:
 - Build y pruebas en verde con Dune.
