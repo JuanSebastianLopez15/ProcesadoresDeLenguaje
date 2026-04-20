@@ -162,7 +162,7 @@ let fixtures =
                   params = [];
                   ret = [];
                   body =
-                    [ ShortDecl ("contador", Lit (IntLit 1L));
+                    [ ShortDecl (["contador"], [Lit (IntLit 1L)]);
                       ForCond
                         ( BinOp (Leq, Var "contador", Lit (IntLit 3L)),
                           [ ExprStmt
@@ -217,7 +217,7 @@ let fixtures =
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ ShortDecl ("resultado", Call (Var "doble", [])) ];
+                  body = [ ShortDecl (["resultado"], [Call (Var "doble", [])]) ];
                 };
             ];
         };
@@ -237,7 +237,7 @@ let fixtures =
                   params = [];
                   ret = [];
                   body =
-                    [ ShortDecl ("x", Lit (IntLit 0L));
+                    [ ShortDecl (["x"], [Lit (IntLit 0L)]);
                       If
                         ( BinOp (Eq, Var "x", Lit (IntLit 0L)),
                           [ ExprStmt
@@ -285,7 +285,7 @@ let fixtures =
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ ShortDecl ("resultado", Call (Var "triple", [ Lit (IntLit 3L) ])) ];
+                  body = [ ShortDecl (["resultado"], [Call (Var "triple", [ Lit (IntLit 3L) ])]) ];
                 };
             ];
         };
@@ -311,7 +311,7 @@ let fixtures =
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ ShortDecl ("x", Call (Var "malo", [])) ];
+                  body = [ ShortDecl (["x"], [Call (Var "malo", [])]) ];
                 };
             ];
         };
@@ -330,7 +330,7 @@ let fixtures =
                   name = "main";
                   params = [];
                   ret = [];
-                  body = [ ShortDecl ("resultado", Var "noDeclarada") ];
+                  body = [ ShortDecl (["resultado"], [Var "noDeclarada"]) ];
                 };
             ];
         };

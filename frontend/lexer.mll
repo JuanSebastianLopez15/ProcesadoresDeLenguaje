@@ -10,6 +10,7 @@
     | INTLIT _
     | FLOATLIT _
     | STRINGLIT _
+    | IOTA
     | TRUE
     | FALSE
     | NIL
@@ -75,6 +76,7 @@ rule read = parse
   | "return"   { emit RETURN }
   | "var"      { emit VAR }
   | "const"    { emit CONST }
+  | "iota"     { emit IOTA }
   | "defer"    { emit DEFER }
   | "go"       { emit GO }
   | "switch"   { emit SWITCH }

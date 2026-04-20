@@ -2,7 +2,8 @@ type token =
   | PACKAGE | IMPORT | FUNC | FOR | IF | ELSE | RETURN | VAR | RANGE
   | TYPE | STRUCT | CONST | DEFER | GO | SWITCH | CASE | DEFAULT
   | MAP | INTERFACE | CHAN
-  | MAKE | NEW
+  | MAKE | NEW | DELETE | REAL | IMAG | COMPLEX | COPY | RECOVER | PANIC | APPEND | CAP | LEN | CLOSE
+  | IOTA
   | TRUE | FALSE | NIL
   | IDENT of string
   | STRUCT_ID of string   (* NUEVO: Token para nombres con Mayúscula *)

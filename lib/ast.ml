@@ -51,17 +51,21 @@ type expr =
   | Index of expr * expr
   | Slice of expr * expr option * expr option * expr option
   | Selector of expr * string
-  | StructLit of string * expr list  (* NUEVO: instanciar struct Resultado{num, clas} *)
-  | SliceLit of typ * expr list      (* NUEVO: instanciar arreglo []int64{1, 2, 3} *)
-  | Cast of typ * expr               (* NUEVO: casteos explícitos como int64(-1) o []rune("palabra") *)
+  | StructLit of string * (string option * expr) list  (* NUEVO: Key: Value *)
+  | SliceLit of typ * (string option * expr) list      (* NUEVO: Index: Value *)
+  | Spread of expr
+  | Cast of typ * expr
+  | KeyedExpr of string * expr  (* Para soportar Key: Value en otros contextos *)
 
 type stmt =
   | Assign of expr list * expr list
   | MultiAssign of expr list * expr list
-  | ShortDecl of string * expr
-  | MultiShortDecl of string list * expr list
+  | ShortDecl of string list * expr list
+  | TypeSwitch of string * expr * (string list * stmt list) list * stmt list option
   | If of expr * stmt list * stmt list option
+  | IfInit of stmt * expr * stmt list * stmt list option
   | ForCond of expr * stmt list
+  | ForClassic of stmt option * expr option * stmt option * stmt list
   | ForRange of string * string * expr * stmt list
   | Return of expr list
   | ExprStmt of expr

@@ -50,6 +50,18 @@ let token_to_string = function
   | CHAN -> "CHAN"
   | MAKE -> "MAKE"
   | NEW -> "NEW"
+  | DELETE -> "DELETE"
+  | REAL -> "REAL"
+  | IMAG -> "IMAG"
+  | COMPLEX -> "COMPLEX"
+  | COPY -> "COPY"
+  | RECOVER -> "RECOVER"
+  | PANIC -> "PANIC"
+  | APPEND -> "APPEND"
+  | CAP -> "CAP"
+  | LEN -> "LEN"
+  | CLOSE -> "CLOSE"
+  | IOTA -> "IOTA"
   | TRUE -> "TRUE"
   | FALSE -> "FALSE"
   | NIL -> "NIL"
@@ -203,13 +215,19 @@ let rec string_of_expr = function
   | Selector (e, field) ->
       Printf.sprintf "Selector(%s, %s)" (string_of_expr e) field
   | StructLit (t_name, args) ->
+      let s_arg (k_opt, e) = match k_opt with Some k -> k ^ ":" ^ string_of_expr e | None -> string_of_expr e in
       Printf.sprintf "StructLit(%s, [%s])" t_name
-        (String.concat "; " (List.map string_of_expr args))
-  | SliceLit (t, args) ->                                       (* NUEVO *)
+        (String.concat "; " (List.map s_arg args))
+  | SliceLit (t, args) ->
+      let s_arg (k_opt, e) = match k_opt with Some k -> k ^ ":" ^ string_of_expr e | None -> string_of_expr e in
       Printf.sprintf "SliceLit(%s, [%s])" (string_of_typ t)
-        (String.concat "; " (List.map string_of_expr args))
-  | Cast (t, e) ->                                              (* NUEVO *)
+        (String.concat "; " (List.map s_arg args))
+  | Spread e ->
+      Printf.sprintf "Spread(%s)" (string_of_expr e)
+  | Cast (t, e) ->
       Printf.sprintf "Cast(%s, %s)" (string_of_typ t) (string_of_expr e)
+  | KeyedExpr (k, e) ->
+      Printf.sprintf "KeyedExpr(%s, %s)" k (string_of_expr e)
 
 
 let rec string_of_stmt level = function
@@ -217,8 +235,14 @@ let rec string_of_stmt level = function
       Printf.sprintf "%sAssign([%s], [%s])" (indent level)
         (String.concat "; " (List.map string_of_expr lhs))
         (String.concat "; " (List.map string_of_expr rhs))
-  | ShortDecl (name, e) ->
-      Printf.sprintf "%sShortDecl(%s, %s)" (indent level) name (string_of_expr e)
+  | MultiAssign (lhs, rhs) ->
+      Printf.sprintf "%sMultiAssign([%s], [%s])" (indent level)
+        (String.concat "; " (List.map string_of_expr lhs))
+        (String.concat "; " (List.map string_of_expr rhs))
+  | ShortDecl (names, exprs) ->
+      Printf.sprintf "%sShortDecl([%s], [%s])" (indent level)
+        (String.concat "; " names)
+        (String.concat "; " (List.map string_of_expr exprs))
   | If (cond, then_block, else_opt) ->
       let then_s = String.concat "\n" (List.map (string_of_stmt (level + 1)) then_block) in
       let else_s =
@@ -229,8 +253,25 @@ let rec string_of_stmt level = function
               (String.concat "\n" (List.map (string_of_stmt (level + 1)) b))
       in
       Printf.sprintf "%sIf(%s)\n%s%s" (indent level) (string_of_expr cond) then_s else_s
+  | IfInit (init_stmt, cond, then_block, else_opt) ->
+      let init_s = string_of_stmt (level + 1) init_stmt in
+      let then_s = String.concat "\n" (List.map (string_of_stmt (level + 1)) then_block) in
+      let else_s =
+        match else_opt with
+        | None -> ""
+        | Some b ->
+            Printf.sprintf "\n%selse:\n%s" (indent level)
+              (String.concat "\n" (List.map (string_of_stmt (level + 1)) b))
+      in
+      Printf.sprintf "%sIfInit(%s)\n%s\n%s%s" (indent level) (string_of_expr cond) init_s then_s else_s
   | ForCond (cond, body) ->
       Printf.sprintf "%sForCond(%s)\n%s" (indent level) (string_of_expr cond)
+        (String.concat "\n" (List.map (string_of_stmt (level + 1)) body))
+  | ForClassic (init_opt, cond_opt, post_opt, body) ->
+      let init_s = match init_opt with None -> "None" | Some s -> string_of_stmt (level + 1) s in
+      let cond_s = match cond_opt with None -> "None" | Some e -> string_of_expr e in
+      let post_s = match post_opt with None -> "None" | Some s -> string_of_stmt (level + 1) s in
+      Printf.sprintf "%sForClassic(init=%s, cond=%s, post=%s)\n%s" (indent level) init_s cond_s post_s
         (String.concat "\n" (List.map (string_of_stmt (level + 1)) body))
   | ForRange (k, v, coll, body) ->
       Printf.sprintf "%sForRange(%s, %s, %s)\n%s" (indent level) k v
@@ -242,6 +283,24 @@ let rec string_of_stmt level = function
   | ExprStmt e -> Printf.sprintf "%sExprStmt(%s)" (indent level) (string_of_expr e)
   | Defer e -> Printf.sprintf "%sDefer(%s)" (indent level) (string_of_expr e)
   | Go e -> Printf.sprintf "%sGo(%s)" (indent level) (string_of_expr e)
+  | TypeSwitch (bind, target, cases, default_opt) ->
+      let cases_s =
+        cases
+        |> List.map (fun (labels, body) ->
+             let labels_s = String.concat ", " labels in
+             let body_s = String.concat "\n" (List.map (string_of_stmt (level + 2)) body) in
+             Printf.sprintf "%scase [%s]:\n%s" (indent (level + 1)) labels_s body_s)
+        |> String.concat "\n"
+      in
+      let default_s =
+        match default_opt with
+        | None -> ""
+        | Some body ->
+            let body_s = String.concat "\n" (List.map (string_of_stmt (level + 2)) body) in
+            Printf.sprintf "\n%sdefault:\n%s" (indent (level + 1)) body_s
+      in
+      Printf.sprintf "%sTypeSwitch(%s := %s.(type))\n%s%s"
+        (indent level) bind (string_of_expr target) cases_s default_s
 
 let string_of_decl = function
   | FuncDecl f ->

@@ -46,9 +46,16 @@ let () =
   let ast =
     try Parser.program Lexer.read lexbuf
     with
+    | Lexer.SyntaxError msg ->
+        let pos = lexbuf.lex_curr_p in
+        Printf.eprintf "Error léxico en línea %d, columna %d: %s\n" 
+          pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1) msg;
+        exit 1
     | Parser.Error ->
         let pos = lexbuf.lex_curr_p in
-        Printf.eprintf "Error sintáctico en línea %d, columna %d\n" pos.pos_lnum (pos.pos_cnum - pos.pos_bol);
+        let token = Lexing.lexeme lexbuf in
+        Printf.eprintf "Error sintáctico en línea %d, columna %d: token inesperado '%s'\n" 
+          pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1) token;
         exit 1
     | Failure msg ->
         Printf.eprintf "Error: %s\n" msg;
