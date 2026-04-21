@@ -16,18 +16,6 @@ let parse_type = function
 	| "any" | "error" -> TAny
 	| name when List.mem name numeric_named_types -> TName name
 	| name -> TName name
-
-let zero_value_expr_for_type = function
-	| TInt -> Lit (IntLit 0L)
-	| TFloat64 -> Lit (FloatLit 0.0)
-	| TString -> Lit (StringLit "")
-	| TBool -> Lit (BoolLit false)
-	| TSlice t -> SliceLit (t, [])
-	| TMap (k, v) -> SliceLit (TMap (k, v), [])
-	| TName name when List.mem name numeric_named_types ->
-		if name = "float32" || name = "float64" then Lit (FloatLit 0.0)
-		else Lit (IntLit 0L)
-	| _ -> Lit NilLit
 %}
 
 /* DEFINICIÓN DE TOKENS */
@@ -40,6 +28,7 @@ let zero_value_expr_for_type = function
 %token <string> IDENT
 %token <string> STRUCT_ID
 %token <int64> INTLIT
+%token <int> RUNELIT
 %token <float> FLOATLIT
 %token <string> STRINGLIT
 %token ASSIGN DECL_ASSIGN
@@ -292,8 +281,8 @@ go_type_inner:
 	| CHAN t=go_type { ignore t; TAny }
 	| CHAN ARROW t=go_type { ignore t; TAny }
 	| ARROW CHAN t=go_type { ignore t; TAny }
-	| INTERFACE LBRACE RBRACE { TAny }
-	| INTERFACE LBRACE body=rhs_tokens_group RBRACE { ignore body; TAny }
+	| INTERFACE LBRACE RBRACE { TInterface [] }
+	| INTERFACE LBRACE body=rhs_tokens_group RBRACE { ignore body; TInterface [("Marker", TVoid)] }
 	| FUNC LPAREN ps=rhs_tokens_group RPAREN LPAREN ret=rhs_tokens_group RPAREN { ignore ps; ignore ret; TAny }
 	| FUNC LPAREN ps=rhs_tokens_group RPAREN t=any_ident _targs=targs_opt { ignore ps; ignore t; ignore _targs; TAny }
 	| FUNC LPAREN ps=rhs_tokens_group RPAREN LBRACK RBRACK t=go_type { ignore ps; ignore t; TAny }
@@ -400,9 +389,9 @@ stmt:
 	| DEFER e=expr { Defer e }
 	| GO e=expr { Go e }
 	| VAR name=any_ident _typ=go_type init=typed_var_init_opt
-			{ (match init with Some e -> ShortDecl ([name], [e]) | None -> ShortDecl ([name], [zero_value_expr_for_type _typ])) }
+			{ VarDeclStmt (name, Some _typ, init) }
 	| VAR name=any_ident ASSIGN value=expr
-			{ ShortDecl ([name], [value]) }
+			{ VarDeclStmt (name, None, Some value) }
 	| CONST name=any_ident ct=const_tail
 			{ ignore ct; ShortDecl ([name], [Lit NilLit]) }
 	| SWITCH body=rhs_tokens_group { ignore body; ExprStmt (Lit NilLit) }
@@ -463,11 +452,11 @@ expr:
 	| e=expr DEC %prec DEC  { UnOp (Dec, e) }
 	| l=expr OR_OR r=expr   { BinOp (Or, l, r) }
 	| l=expr AND_AND r=expr { BinOp (And, l, r) }
-	| l=expr PIPE r=expr    { BinOp (Add, l, r) }
-	| l=expr CARET r=expr   { BinOp (Sub, l, r) }
-	| l=expr AMP r=expr     { BinOp (Mul, l, r) }
-	| l=expr SHL r=expr     { BinOp (Mul, l, r) }
-	| l=expr SHR r=expr     { BinOp (Div, l, r) }
+	| l=expr PIPE r=expr    { BinOp (BOr, l, r) }
+	| l=expr CARET r=expr   { BinOp (BXor, l, r) }
+	| l=expr AMP r=expr     { BinOp (BAnd, l, r) }
+	| l=expr SHL r=expr     { BinOp (Shl, l, r) }
+	| l=expr SHR r=expr     { BinOp (Shr, l, r) }
 	| l=expr EQ_EQ r=expr   { BinOp (Eq, l, r) }
 	| l=expr NOT_EQ r=expr  { BinOp (Neq, l, r) }
 	| l=expr LT r=expr      { BinOp (Lt, l, r) }
@@ -481,18 +470,20 @@ expr:
 	| l=expr MOD r=expr     { BinOp (Mod, l, r) }
 	| BANG e=expr           { UnOp (Not, e) }
 	| MINUS e=expr %prec BANG { UnOp (Neg, e) }
-	| AMP e=expr %prec BANG   { UnOp (Not, e) } 
-	| STAR e=expr %prec BANG  { UnOp (Not, e) } 
+	| AMP e=expr %prec BANG   { UnOp (AddrOf, e) } 
+	| STAR e=expr %prec BANG  { UnOp (Deref, e) } 
 
 primary:
 	| n=INTLIT        { Lit (IntLit n) }
+	| n=RUNELIT       { Lit (RuneLit n) }
 	| f=FLOATLIT      { Lit (FloatLit f) }
 	| s=STRINGLIT     { Lit (StringLit s) }
 	| TRUE            { Lit (BoolLit true) }
 	| FALSE           { Lit (BoolLit false) }
 	| NIL             { Lit NilLit }
-	| IOTA            { Lit (IntLit 0L) }
-	| FUNC LPAREN params=params_opt RPAREN ret=ret_opt body=block { ignore params; ignore ret; ignore body; Lit NilLit } 
+	| IOTA            { Var "__iota__" }
+	| FUNC params=params_opt_parens ret=ret_opt body=block 
+			{ FuncLit { name = "anon"; params; ret; body } }
 	| name=any_ident { Var name }
 	| LPAREN e=expr RPAREN { e }
 	| e=primary LPAREN args=args_opt RPAREN { Call (e, args) }
@@ -525,6 +516,9 @@ primary:
 	| LBRACK RBRACK t=go_type LBRACE args=keyed_args_opt RBRACE { SliceLit (t, args) }
 	| LBRACK INTLIT RBRACK t=go_type LBRACE args=keyed_args_opt RBRACE { SliceLit (t, args) }
 	| LBRACK ELLIPSIS RBRACK t=go_type LBRACE args=keyed_args_opt RBRACE { SliceLit (t, args) }
+
+params_opt_parens:
+	| LPAREN ps=params_opt RPAREN { ps }
 
 
 expr_opt:

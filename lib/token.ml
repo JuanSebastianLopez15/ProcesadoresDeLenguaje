@@ -8,6 +8,7 @@ type token =
   | IDENT of string
   | STRUCT_ID of string   (* NUEVO: Token para nombres con Mayúscula *)
   | INTLIT of int64
+  | RUNELIT of int
   | FLOATLIT of float
   | STRINGLIT of string
   | ASSIGN

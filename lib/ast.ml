@@ -11,6 +11,7 @@ type typ =
   | TMap of typ * typ
   | TFunc of typ list * typ list
   | TStruct of (string * typ) list  (* NUEVO: representa los campos de un struct *)
+  | TInterface of (string * typ) list (* NUEVO: representa los métodos de una interfaz *)
   | TName of string                 (* NUEVO: representa un tipo personalizado como "Resultado" *)
 
 type literal =
@@ -18,6 +19,7 @@ type literal =
   | FloatLit of float
   | StringLit of string
   | BoolLit of bool
+  | RuneLit of int
   | NilLit
 
 type binop =
@@ -34,14 +36,29 @@ type binop =
   | Geq
   | And
   | Or
+  | BAnd
+  | BOr
+  | BXor
+  | Shl
+  | Shr
+  | AndNot
 
 type unop =
   | Not
   | Neg
   | Inc
   | Dec
+  | AddrOf
+  | Deref
 
-type expr =
+type func_decl = {
+  name : string;
+  params : (string * typ) list;
+  ret : typ list;
+  body : stmt list;
+}
+
+and expr =
   | Lit of literal
   | Var of string
   | BinOp of binop * expr * expr
@@ -56,11 +73,13 @@ type expr =
   | Spread of expr
   | Cast of typ * expr
   | KeyedExpr of string * expr  (* Para soportar Key: Value en otros contextos *)
+  | FuncLit of func_decl
 
-type stmt =
+and stmt =
   | Assign of expr list * expr list
   | MultiAssign of expr list * expr list
   | ShortDecl of string list * expr list
+  | VarDeclStmt of string * typ option * expr option
   | TypeSwitch of string * expr * (string list * stmt list) list * stmt list option
   | If of expr * stmt list * stmt list option
   | IfInit of stmt * expr * stmt list * stmt list option
@@ -71,13 +90,6 @@ type stmt =
   | ExprStmt of expr
   | Defer of expr
   | Go of expr
-
-type func_decl = {
-  name : string;
-  params : (string * typ) list;
-  ret : typ list;
-  body : stmt list;
-}
 
 type decl =
   | FuncDecl of func_decl

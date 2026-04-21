@@ -44,6 +44,31 @@
 
   let parse_float_literal s =
     try float_of_string (remove_underscores s) with _ -> 0.0
+
+  let parse_char_literal s =
+    if String.length s = 0 then 0
+    else if s.[0] <> '\\' then Char.code s.[0]
+    else if String.length s = 1 then 0 (* Should not happen *)
+    else match s.[1] with
+      | 'n' -> Char.code '\n'
+      | 'r' -> Char.code '\r'
+      | 't' -> Char.code '\t'
+      | '\\' -> Char.code '\\'
+      | '\'' -> Char.code '\''
+      | '"' -> Char.code '"'
+      | 'a' -> Char.code '\x07'
+      | 'b' -> Char.code '\b'
+      | 'f' -> Char.code '\x0c'
+      | 'v' -> Char.code '\x0b'
+      | 'x' -> 
+          (try int_of_string ("0x" ^ String.sub s 2 2) with _ -> 0)
+      | 'u' -> 
+          (try int_of_string ("0x" ^ String.sub s 2 4) with _ -> 0)
+      | 'U' -> 
+          (try int_of_string ("0x" ^ String.sub s 2 8) with _ -> 0)
+      | '0' .. '7' -> 
+          (try int_of_string ("0o" ^ String.sub s 1 3) with _ -> 0)
+      | _ -> Char.code s.[1]
 }
 
 let digit = ['0'-'9']
@@ -155,7 +180,7 @@ rule read = parse
 
   | '`' { emit (STRINGLIT (raw_string (Buffer.create 1024) lexbuf)) }
   | '"' { emit (STRINGLIT (interp_string (Buffer.create 1024) lexbuf)) }
-  | '\'' ( [^ '\\' '\''] | '\\' _ )+ '\'' { emit (INTLIT 0L) }
+  | '\'' ( [^ '\\' '\''] | '\\' _ )+ as s '\'' { emit (RUNELIT (parse_char_literal s)) }
 
   | "0" ['x' 'X'] (hexdigit | '_')+ "." (hexdigit | '_')* ['p' 'P'] ['+' '-']? (digit | '_')+ "i" as n
       { emit (FLOATLIT (parse_float_literal (String.sub n 0 (String.length n - 1)))) }

@@ -68,6 +68,7 @@ let token_to_string = function
   | IDENT s -> Printf.sprintf "IDENT(%s)" s
   | STRUCT_ID s -> Printf.sprintf "STRUCT_ID(%s)" s
   | INTLIT n -> Printf.sprintf "INTLIT(%Ld)" n
+  | RUNELIT n -> Printf.sprintf "RUNELIT(%d)" n
   | FLOATLIT f -> Printf.sprintf "FLOATLIT(%g)" f
   | STRINGLIT s -> Printf.sprintf "STRINGLIT(%s)" s
   | ASSIGN -> "ASSIGN"
@@ -167,31 +168,26 @@ let string_of_typ = function
 
 let string_of_literal = function
   | IntLit n -> Printf.sprintf "IntLit(%Ld)" n
+  | RuneLit n -> Printf.sprintf "RuneLit(%d)" n
   | FloatLit f -> Printf.sprintf "FloatLit(%f)" f
   | StringLit s -> Printf.sprintf "StringLit(%S)" s
   | BoolLit b -> Printf.sprintf "BoolLit(%b)" b
   | NilLit -> "NilLit"
 
 let string_of_binop = function
-  | Add -> "Add"
-  | Sub -> "Sub"
-  | Mul -> "Mul"
-  | Div -> "Div"
-  | Mod -> "Mod"
-  | Eq -> "Eq"
-  | Neq -> "Neq"
-  | Lt -> "Lt"
-  | Gt -> "Gt"
-  | Leq -> "Leq"
-  | Geq -> "Geq"
-  | And -> "And"
-  | Or -> "Or"
+  | Add -> "Add" | Sub -> "Sub" | Mul -> "Mul" | Div -> "Div" | Mod -> "Mod"
+  | Eq -> "Eq" | Neq -> "Neq" | Lt -> "Lt" | Gt -> "Gt"
+  | Leq -> "Leq" | Geq -> "Geq" | And -> "And" | Or -> "Or"
+  | BAnd -> "BAnd" | BOr -> "BOr" | BXor -> "BXor"
+  | Shl -> "Shl" | Shr -> "Shr" | AndNot -> "AndNot"
 
 let string_of_unop = function
   | Not -> "Not"
   | Neg -> "Neg"
   | Inc -> "Inc"
   | Dec -> "Dec"
+  | AddrOf -> "AddrOf"
+  | Deref -> "Deref"
 
 let rec string_of_expr = function
   | Lit lit -> Printf.sprintf "Lit(%s)" (string_of_literal lit)
@@ -228,6 +224,8 @@ let rec string_of_expr = function
       Printf.sprintf "Cast(%s, %s)" (string_of_typ t) (string_of_expr e)
   | KeyedExpr (k, e) ->
       Printf.sprintf "KeyedExpr(%s, %s)" k (string_of_expr e)
+  | FuncLit fd ->
+      Printf.sprintf "FuncLit(%s)" fd.name
 
 
 let rec string_of_stmt level = function
