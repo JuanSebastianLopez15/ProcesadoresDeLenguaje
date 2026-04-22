@@ -117,7 +117,12 @@ stmt:
       in ShortDecl (x, zero)
     }
   | x=IDENT DECL_ASSIGN e=expr           { ShortDecl (x, e) }
-  | x=IDENT ASSIGN e=expr                { Assign (x, e) }
+  | lhs=expr ASSIGN rhs=expr {
+      match lhs with
+      | Var x -> Assign (x, rhs)
+      | Selector _ -> FieldAssign (lhs, rhs)
+      | _ -> failwith "LHS de asignacion invalido"
+    }
   | IF c=expr_ns t=block                    { If (c, t, None) }
   | IF c=expr_ns t=block ELSE e=block       { If (c, t, Some e) }
   | IF c=expr_ns t=block ELSE elif=stmt     { If (c, t, Some [elif]) }

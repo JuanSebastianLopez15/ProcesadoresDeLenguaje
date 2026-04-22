@@ -11,4 +11,4 @@ let () =
       Printf.printf "Token at line %d, col %d\n" pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1);
       if tok = EOF then exit 0
     done
-  with Lexer.LexError msg -> Printf.printf "LexError: %s\n" msg
+  with Lexer.LexError err -> Printf.printf "LexError: %s\n" err.message

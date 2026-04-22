@@ -44,6 +44,7 @@ type expr =
 type stmt =
   | ShortDecl of string * expr                     (* x := e *)
   | Assign of string * expr                        (* x = e (reasignación) *)
+  | FieldAssign of expr * expr                     (* lhs (Selector o Index) = rhs *)
   | If of expr * stmt list * stmt list option      (* if cond { ... } [else { ... }] *)
   | Return of expr option                          (* return [e] *)
   | ExprStmt of expr                               (* llamada como statement *)

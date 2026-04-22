@@ -37,6 +37,7 @@ let check_assign_is_local (fd : Ast.func_decl) =
     | [] -> ()
     | ShortDecl (x, _) :: rest -> check (x :: declared) rest
     | Assign (_, _) :: rest -> check declared rest
+    | FieldAssign (_, _) :: rest -> check declared rest
     | If (_, t, e) :: rest ->
         check declared t;
         Option.iter (check declared) e;
@@ -68,6 +69,7 @@ let rec validate_expr = function
 
 let rec validate_stmt = function
   | ShortDecl (_, e) | Assign (_, e) | ExprStmt e -> validate_expr e
+  | FieldAssign (lhs, rhs) -> validate_expr lhs; validate_expr rhs
   | Return (Some e) -> validate_expr e
   | Return None -> ()
   | If (c, t, e) ->

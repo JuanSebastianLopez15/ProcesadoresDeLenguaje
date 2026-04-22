@@ -247,6 +247,24 @@ let rec check_stmt env expected_ret = function
            env
        | None -> raise (TypeError (UnknownVar x)))
 
+  | FieldAssign (lhs, rhs) ->
+      (* 1. Verificar que el LHS es un Selector válido *)
+      let lhs_type = check_expr env lhs in
+      (* 2. Verificar que el RHS tiene el mismo tipo que el campo *)
+      let rhs_type = check_expr env rhs in
+      expect_type lhs_type rhs_type "asignación de campo";
+      (* 3. Verificar que la variable raíz existe en el entorno *)
+      let rec check_lhs_root = function
+        | Selector (Var x, _) ->
+            (match Env.lookup_var x env with
+             | Some _ -> ()
+             | None -> raise (TypeError (UnknownVar x)))
+        | Selector (inner, _) -> check_lhs_root inner
+        | _ -> raise (TypeError (NotSelectable TVoid))
+      in
+      check_lhs_root lhs;
+      env
+
   | If (cond, then_b, else_b) ->
       expect_type TBool (check_expr env cond) "condición de if";
       let _ = check_block env expected_ret then_b in

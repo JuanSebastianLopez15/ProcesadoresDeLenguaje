@@ -138,6 +138,9 @@ let rec uses_rune_cast_stmt ctx s =
       let t = infer_type ctx e in
       let new_ctx = { ctx with var_types = (x, t) :: ctx.var_types } in
       (used, new_ctx)
+  | FieldAssign (lhs, rhs) ->
+      let used = uses_rune_cast_expr ctx lhs || uses_rune_cast_expr ctx rhs in
+      (used, ctx)
   | ExprStmt e -> (uses_rune_cast_expr ctx e, ctx)
   | Return (Some e) -> (uses_rune_cast_expr ctx e, ctx)
   | Return None -> (false, ctx)
@@ -470,6 +473,35 @@ let rec simplify_stmts stmts =
       If (cond, simplify_stmts t, Option.map simplify_stmts e) :: simplify_stmts rest
   | s :: rest -> s :: simplify_stmts rest
 
+(* Extrae la variable raíz de cualquier cadena de Selectors.
+   a.b     → Some "a"
+   a.b.c   → Some "a"
+   f().b   → None (no tiene raíz variable) *)
+let rec lhs_root_var = function
+  | Var x -> Some x
+  | Selector (Var x, _) -> Some x
+  | Selector (inner, _) -> lhs_root_var inner
+  | _ -> None
+
+(* Construye record update anidado desde adentro hacia afuera.
+   a.b = v     → "{ a with b = v }"
+   a.b.c = v   → "{ a with b = { a.b with c = v } }"
+   La recursión sube por el Selector, produciendo updates anidados. *)
+let rec build_record_update ctx lhs rhs_s =
+  match lhs with
+  | Selector (Var x, field) ->
+      Printf.sprintf "{ %s with %s = %s }"
+        (value_ident x) (field_ident field) rhs_s
+  | Selector (inner, field) ->
+      (* Paso 1: construye el update del nivel actual *)
+      let inner_base_s = render_expr ctx 100 inner in
+      let current_level =
+        Printf.sprintf "{ %s with %s = %s }" inner_base_s (field_ident field) rhs_s
+      in
+      (* Paso 2: sube un nivel, envolviendo en el update del padre *)
+      build_record_update ctx inner current_level
+  | _ -> failwith "build_record_update: LHS inválido"
+
 let rec transform_block ctx = function
   | [] -> "()"
   | [Return None] -> "()"
@@ -547,6 +579,32 @@ let rec transform_block ctx = function
         (value_ident x)
         (indent_str ctx)
         (transform_block new_ctx rest)
+
+  (* PATRÓN B: If(cond, [FieldAssign(x.*.f, new)], None) — x ya declarada antes *)
+  | If (c, [FieldAssign (lhs, new_val)], None) :: rest
+    when lhs_root_var lhs <> None ->
+      let x = Option.get (lhs_root_var lhs) in
+      let update_s = build_record_update ctx lhs (expr_to_ocaml ctx new_val) in
+      Printf.sprintf "let %s = if %s then %s else %s in\n%s%s"
+        (value_ident x)
+        (expr_to_ocaml ctx c)
+        update_s
+        (value_ident x)
+        (indent_str ctx)
+        (transform_block ctx rest)
+
+  (* PATRÓN C: FieldAssign standalone — cualquier profundidad, catch-all exhaustivo *)
+  | FieldAssign (lhs, rhs) :: rest ->
+      (match lhs_root_var lhs with
+       | Some x ->
+           let update_s = build_record_update ctx lhs (expr_to_ocaml ctx rhs) in
+           Printf.sprintf "let %s = %s in\n%s%s"
+             (value_ident x) update_s
+             (indent_str ctx)
+             (transform_block ctx rest)
+       | None ->
+           failwith (Printf.sprintf "FieldAssign: LHS sin variable raíz: %s"
+             (expr_to_ocaml ctx lhs)))
 
   | If (c, t, None) :: rest ->
       Printf.sprintf "(if %s then\n%s%s\n%selse ());\n%s%s"
@@ -655,7 +713,10 @@ let rec collect_calls ctx e acc =
 
 let rec collect_calls_stmt ctx s acc =
   match s with
-  | ShortDecl (_, e) | Assign (_, e) | ExprStmt e | Return (Some e) -> collect_calls ctx e acc
+  | ShortDecl (_, e) | Assign (_, e) | ExprStmt e | Return (Some e) ->
+      collect_calls ctx e acc
+  | FieldAssign (lhs, rhs) ->
+      collect_calls ctx rhs (collect_calls ctx lhs acc)
   | Return None -> acc
   | If (c, t, e_opt) ->
       let acc' = collect_calls ctx c acc in
