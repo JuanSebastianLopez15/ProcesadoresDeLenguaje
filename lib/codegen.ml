@@ -379,7 +379,10 @@ let rec render_expr ctx parent_prec e =
 
 and render_arg ctx e =
   match e with
-  | Var _ | Lit _ -> render_expr ctx 100 e
+  | Var _ -> render_expr ctx 100 e
+  | Lit (IntLit n) when n >= 0L -> render_expr ctx 100 e
+  | Lit (FloatLit f) when f >= 0.0 -> render_expr ctx 100 e
+  | Lit (StringLit _) | Lit (BoolLit _) -> render_expr ctx 100 e
   | SliceLit (_, []) -> "[]"
   | SliceLit (_, [_]) -> render_expr ctx 100 e
   | Selector (Var _, _) -> render_expr ctx 100 e

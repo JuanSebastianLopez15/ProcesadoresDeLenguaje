@@ -103,6 +103,19 @@ stmt_list:
   | s=stmt SEMICOLON rest=stmt_list { s :: rest }
 
 stmt:
+  | VAR x=IDENT ASSIGN e=expr            { ShortDecl (x, e) }
+  | VAR x=IDENT _t=go_type ASSIGN e=expr  { ShortDecl (x, e) }
+  | VAR x=IDENT t=go_type                {
+      let zero = match t with
+        | TInt -> Lit (IntLit 0L)
+        | TFloat -> Lit (FloatLit 0.0)
+        | TString -> Lit (StringLit "")
+        | TBool -> Lit (BoolLit false)
+        | TSlice _ -> SliceLit (t, [])
+        | TName n -> StructLit (n, [])
+        | TVoid -> failwith "tipo void no tiene zero value"
+      in ShortDecl (x, zero)
+    }
   | x=IDENT DECL_ASSIGN e=expr           { ShortDecl (x, e) }
   | x=IDENT ASSIGN e=expr                { Assign (x, e) }
   | IF c=expr_ns t=block                    { If (c, t, None) }
@@ -197,7 +210,6 @@ arg_list:
 keyed_args:
   | { [] }
   | a=keyed_arg { [a] }
-  | a=keyed_arg COMMA { [a] }
   | a=keyed_arg COMMA rest=keyed_args { a :: rest }
 
 keyed_arg:
