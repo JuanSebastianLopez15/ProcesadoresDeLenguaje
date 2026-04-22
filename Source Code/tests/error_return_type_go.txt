@@ -1,9 +1,0 @@
-package main
-
-func malo() int {
-    return "oops"
-}
-
-func main() {
-    x := malo()
-}

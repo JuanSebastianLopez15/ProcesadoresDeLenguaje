@@ -1,9 +1,0 @@
-package main
-
-func doble(numero int) int {
-    return numero * 2
-}
-
-func main() {
-    resultado := doble()
-}

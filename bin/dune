@@ -1,3 +1,8 @@
 (executable
  (name main)
- (libraries lib frontend go_to_ocaml_middle codegen unix))
+ (public_name compiler)
+ (libraries lib unix))
+
+(executable
+ (name test_lex)
+ (libraries lib))

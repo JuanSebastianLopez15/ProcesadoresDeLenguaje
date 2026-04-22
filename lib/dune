@@ -1,3 +1,10 @@
 (library
  (name lib)
- (public_name ProcesadoresDeLenguaje.lib))
+ (public_name ProcesadoresDeLenguaje.lib)
+ (libraries unix uutf))
+
+(menhir
+ (modules parser))
+
+(ocamllex
+ lexer)

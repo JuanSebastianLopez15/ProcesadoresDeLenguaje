@@ -1,101 +1,73 @@
-(* AST rico para frontend + middleware (typecheck). *)
+(* lib/ast.ml *)
 type typ =
-  | TInt
-  | TFloat64
-  | TString
-  | TBool
-  | TNil
-  | TVoid
-  | TAny
-  | TSlice of typ
-  | TMap of typ * typ
-  | TFunc of typ list * typ list
-  | TStruct of (string * typ) list  (* NUEVO: representa los campos de un struct *)
-  | TInterface of (string * typ) list (* NUEVO: representa los métodos de una interfaz *)
-  | TName of string                 (* NUEVO: representa un tipo personalizado como "Resultado" *)
+  | TInt                         (* int, int64 *)
+  | TFloat                       (* float64 *)
+  | TString                      (* string *)
+  | TBool                        (* bool *)
+  | TVoid                        (* tipo de retorno de funciones sin return *)
+  | TSlice of typ                (* []T *)
+  | TName of string              (* structs definidos por el usuario *)
 
+(* Literales *)
 type literal =
-  | IntLit of Int64.t
+  | IntLit of int64
   | FloatLit of float
   | StringLit of string
   | BoolLit of bool
-  | RuneLit of int
-  | NilLit
 
+(* Operadores binarios *)
 type binop =
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | Mod
-  | Eq
-  | Neq
-  | Lt
-  | Gt
-  | Leq
-  | Geq
-  | And
-  | Or
-  | BAnd
-  | BOr
-  | BXor
-  | Shl
-  | Shr
-  | AndNot
+  | Add | Sub | Mul | Div | Mod
+  | Eq | Neq | Lt | Gt | Leq | Geq
+  | And | Or
 
+(* Operadores unarios *)
 type unop =
-  | Not
-  | Neg
-  | Inc
-  | Dec
-  | AddrOf
-  | Deref
+  | Not                          (* ! *)
+  | Neg                          (* - (unario) *)
 
-type func_decl = {
-  name : string;
-  params : (string * typ) list;
-  ret : typ list;
-  body : stmt list;
-}
-
-and expr =
+(* Expresiones *)
+type expr =
   | Lit of literal
   | Var of string
   | BinOp of binop * expr * expr
   | UnOp of unop * expr
-  | Call of expr * expr list
-  | MethodCall of expr * string * expr list
-  | Index of expr * expr
-  | Slice of expr * expr option * expr option * expr option
-  | Selector of expr * string
-  | StructLit of string * (string option * expr) list  (* NUEVO: Key: Value *)
-  | SliceLit of typ * (string option * expr) list      (* NUEVO: Index: Value *)
-  | Spread of expr
-  | Cast of typ * expr
-  | KeyedExpr of string * expr  (* Para soportar Key: Value en otros contextos *)
-  | FuncLit of func_decl
+  | Call of string * expr list                     (* f(args) — solo funciones por nombre *)
+  | Index of expr * expr                           (* e[i] *)
+  | Selector of expr * string                      (* e.campo *)
+  | StructLit of string * (string option * expr) list  (* Struct{...} posicional o nominal *)
+  | SliceLit of typ * expr list
+  | Cast of typ * expr                    (* NUEVO *)
+                    (* []T{e1, e2, ...} *)
 
-and stmt =
-  | Assign of expr list * expr list
-  | MultiAssign of expr list * expr list
-  | ShortDecl of string list * expr list
-  | VarDeclStmt of string * typ option * expr option
-  | TypeSwitch of string * expr * (string list * stmt list) list * stmt list option
-  | If of expr * stmt list * stmt list option
-  | IfInit of stmt * expr * stmt list * stmt list option
-  | ForCond of expr * stmt list
-  | ForClassic of stmt option * expr option * stmt option * stmt list
-  | ForRange of string * string * expr * stmt list
-  | Return of expr list
-  | ExprStmt of expr
-  | Defer of expr
-  | Go of expr
+(* Statements *)
+type stmt =
+  | ShortDecl of string * expr                     (* x := e *)
+  | Assign of string * expr                        (* x = e (reasignación) *)
+  | If of expr * stmt list * stmt list option      (* if cond { ... } [else { ... }] *)
+  | Return of expr option                          (* return [e] *)
+  | ExprStmt of expr                               (* llamada como statement *)
 
+(* Declaración de función top-level *)
+type func_decl = {
+  name : string;
+  params : (string * typ) list;
+  ret : typ;                     (* TVoid si no hay return *)
+  body : stmt list;
+}
+
+(* Declaración de struct top-level *)
+type struct_decl = {
+  name : string;
+  fields : (string * typ) list;
+}
+
+(* Declaraciones top-level *)
 type decl =
   | FuncDecl of func_decl
-  | VarDecl of string * typ option * expr option
-  | TypeDecl of string * typ         (* NUEVO: declarar 'type Resultado struct {...}' *)
+  | StructDecl of struct_decl
 
+(* Programa completo *)
 type program = {
   package : string;
   imports : string list;
